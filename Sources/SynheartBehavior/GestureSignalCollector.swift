@@ -90,7 +90,7 @@ internal class GestureSignalCollector: NSObject {
     private func removeGestureRecognizers(from window: UIWindow) {
         let recognizers = window.gestureRecognizers ?? []
         for recognizer in recognizers {
-            if recognizer.target as? GestureSignalCollector === self {
+            if recognizer.delegate === self {
                 window.removeGestureRecognizer(recognizer)
             }
         }
@@ -219,8 +219,8 @@ internal class GestureSignalCollector: NSObject {
     }
 
     /// Get current gesture statistics.
-    func getCurrentStats() -> (tapRate: Double?) {
-        return (calculateTapRate())
+    func getCurrentStats() -> Double {
+        return calculateTapRate()
     }
 
     private func currentTimestampMs() -> Int64 {
