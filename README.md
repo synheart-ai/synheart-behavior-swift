@@ -18,13 +18,13 @@ Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "1.0.0")
+    .package(url: "https://github.com/synheart-ai/synheart-behavior-swift.git", from: "1.0.0")
 ]
 ```
 
 Or add via Xcode:
 1. File → Add Packages...
-2. Enter: `https://github.com/synheart-ai/synheart-behavior-ios.git`
+2. Enter: `https://github.com/synheart-ai/synheart-behavior-swift.git`
 3. Select version: `1.0.0`
 
 ## Usage
