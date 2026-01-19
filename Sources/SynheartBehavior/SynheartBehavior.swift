@@ -109,6 +109,40 @@ public class SynheartBehavior {
         return summary
     }
 
+    /// End a session and return HSI-compliant output using synheart-flux.
+    ///
+    /// This method uses the Rust synheart-flux library to compute behavioral metrics
+    /// that are fully HSI-compliant, including:
+    /// - Distraction score and focus hint
+    /// - Burstiness (Barabási formula)
+    /// - Task switch rate and notification load
+    /// - Rolling baselines
+    ///
+    /// If synheart-flux is not available, returns nil. Use `endSession` as fallback.
+    ///
+    /// - Parameter sessionId: The session ID to end
+    /// - Returns: HSI-compliant behavioral payload, or nil if synheart-flux is unavailable
+    /// - Throws: BehaviorError if the SDK is not initialized
+    public func endSessionWithHsi(sessionId: String) throws -> HsiBehaviorPayload? {
+        guard isInitialized else {
+            throw BehaviorError.notInitialized
+        }
+
+        // Emit final session stability metrics
+        attentionCollector?.emitSessionStability(sessionId: sessionId)
+
+        // Flush any pending events
+        eventBatcher?.flush()
+
+        // Get HSI output from session manager
+        return sessionManager?.endSessionWithHsi(sessionId: sessionId)
+    }
+
+    /// Check if synheart-flux is available for HSI-compliant output.
+    public var isFluxAvailable: Bool {
+        return FluxBridge.shared.isAvailable
+    }
+
     /// Get current rolling statistics snapshot.
     public func getCurrentStats() throws -> BehaviorStats {
         guard isInitialized else {
@@ -227,6 +261,8 @@ public class SynheartBehavior {
     internal func emitEvent(_ event: BehaviorEvent) {
         eventBatcher?.addEvent(event)
         sessionManager?.incrementEventCount()
+        // Record event for HSI computation
+        sessionManager?.recordEvent(event)
     }
 }
 

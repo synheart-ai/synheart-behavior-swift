@@ -1,10 +1,16 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Manages behavioral tracking sessions and aggregates statistics.
 internal class SessionManager {
     private var currentSessionId: String?
     private var sessionStartTime: Int64 = 0
     private var eventCount = 0
+
+    // Store events for HSI computation
+    private var sessionEvents: [BehaviorEvent] = []
 
     // Aggregated statistics
     private var typingCadences: [Double] = []
@@ -28,6 +34,9 @@ internal class SessionManager {
     private var lastForegroundDuration: Double?
     private var lastIdleGapSeconds: Double?
 
+    // Flux processor for HSI computation (optional)
+    private var fluxProcessor: FluxBehaviorProcessor?
+
     private let lock = NSLock()
 
     /// Start a new session.
@@ -38,6 +47,9 @@ internal class SessionManager {
         currentSessionId = sessionId
         sessionStartTime = currentTimestampMs()
         eventCount = 0
+
+        // Clear stored events
+        sessionEvents.removeAll()
 
         // Reset aggregated statistics
         typingCadences.removeAll()
@@ -60,6 +72,22 @@ internal class SessionManager {
         lastTapRate = nil
         lastForegroundDuration = nil
         lastIdleGapSeconds = nil
+
+        // Initialize Flux processor if available
+        if FluxBridge.shared.isAvailable && fluxProcessor == nil {
+            do {
+                fluxProcessor = try FluxBehaviorProcessor(baselineWindowSessions: 20)
+            } catch {
+                print("SessionManager: Failed to create FluxBehaviorProcessor: \(error)")
+            }
+        }
+    }
+
+    /// Record an event for HSI computation.
+    func recordEvent(_ event: BehaviorEvent) {
+        lock.lock()
+        defer { lock.unlock() }
+        sessionEvents.append(event)
     }
 
     /// End the current session and return a summary.
@@ -89,6 +117,69 @@ internal class SessionManager {
 
         currentSessionId = nil
         return summary
+    }
+
+    /// End the current session and return HSI-compliant output using synheart-flux.
+    ///
+    /// If synheart-flux is not available, returns nil. Use `endSession` as fallback.
+    func endSessionWithHsi(sessionId: String) -> HsiBehaviorPayload? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard currentSessionId == sessionId else {
+            return nil
+        }
+
+        guard FluxBridge.shared.isAvailable else {
+            print("SessionManager: synheart-flux not available for HSI output")
+            return nil
+        }
+
+        let endTimestamp = currentTimestampMs()
+        let startTime = Date(timeIntervalSince1970: Double(sessionStartTime) / 1000.0)
+        let endTime = Date(timeIntervalSince1970: Double(endTimestamp) / 1000.0)
+
+        // Get device ID
+        #if canImport(UIKit)
+        let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? "ios-device"
+        #else
+        let deviceId = "ios-device"
+        #endif
+
+        // Convert events to Flux JSON format
+        let fluxJson = convertToFluxSessionJson(
+            sessionId: sessionId,
+            deviceId: deviceId,
+            timezone: TimeZone.current.identifier,
+            startTime: startTime,
+            endTime: endTime,
+            events: sessionEvents
+        )
+
+        // Compute HSI metrics using Rust
+        var hsiPayload: HsiBehaviorPayload?
+
+        if let processor = fluxProcessor {
+            // Use stateful processor with baselines
+            do {
+                let hsiJson = try processor.process(fluxJson)
+                hsiPayload = parseHsiJson(hsiJson)
+                print("SessionManager: Successfully computed HSI metrics using synheart-flux (stateful)")
+            } catch {
+                print("SessionManager: Stateful processing failed: \(error)")
+            }
+        }
+
+        // Fallback to stateless if stateful failed
+        if hsiPayload == nil {
+            if let hsiJson = FluxBridge.shared.behaviorToHsi(fluxJson) {
+                hsiPayload = parseHsiJson(hsiJson)
+                print("SessionManager: Successfully computed HSI metrics using synheart-flux (stateless)")
+            }
+        }
+
+        currentSessionId = nil
+        return hsiPayload
     }
 
     /// Get the current session ID.
