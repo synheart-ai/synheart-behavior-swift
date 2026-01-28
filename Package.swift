@@ -3,17 +3,17 @@ import PackageDescription
 
 // SynheartBehavior SDK
 //
-// Optional Integration: synheart-flux (Rust)
+// Required Integration: synheart-flux (Rust)
 // ==========================================
-// The SDK can optionally use synheart-flux (Rust library) for HSI-compliant
-// behavioral metrics computation. If not available, it falls back to Swift.
+// The SDK requires synheart-flux (Rust library) for HSI-compliant
+// behavioral metrics computation. The SDK will fail if Flux is not available.
 //
-// To enable synheart-flux:
+// To integrate synheart-flux:
 // 1. Download SynheartFlux.xcframework from synheart-flux releases
 // 2. Place it in Frameworks/SynheartFlux.xcframework
 // 3. Add it as a dependency to your app target
 //
-// The FluxBridge class will automatically detect and use the library at runtime.
+// The FluxBridge class will detect the library at runtime and throw errors if unavailable.
 
 let package = Package(
     name: "SynheartBehavior",

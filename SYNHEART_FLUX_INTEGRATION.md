@@ -4,7 +4,7 @@ This document explains how to integrate synheart-flux (Rust library) with Synhea
 
 ## Overview
 
-The SynheartBehavior SDK now supports using synheart-flux for computing behavioral metrics. When synheart-flux is available, the SDK provides additional HSI-compliant output including:
+The SynheartBehavior SDK **requires** synheart-flux (Rust library) for computing behavioral metrics. The SDK provides HSI-compliant output including:
 - Distraction score and focus hint
 - Burstiness (Barabási formula)
 - Task switch rate (exponential saturation)
@@ -12,9 +12,10 @@ The SynheartBehavior SDK now supports using synheart-flux for computing behavior
 - Scroll jitter rate
 - Deep focus blocks
 - Interaction intensity
+- Typing session summary
 - Rolling baselines across sessions
 
-If synheart-flux is not available, the SDK continues to work normally with basic metrics.
+**Flux is now required** - the SDK will fail to initialize if Flux libraries are not available.
 
 ## Benefits
 

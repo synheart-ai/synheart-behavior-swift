@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Main entry point for the Synheart Behavioral SDK.
 ///
@@ -27,6 +30,11 @@ public class SynheartBehavior {
         guard !isInitialized else {
             return  // Already initialized
         }
+
+        // Enable battery monitoring early so state is available when needed
+        #if canImport(UIKit)
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        #endif
 
         // Initialize core managers
         sessionManager = SessionManager()
@@ -95,6 +103,9 @@ public class SynheartBehavior {
             throw BehaviorError.notInitialized
         }
 
+        // End any active typing session before ending the behavior session
+        inputCollector?.endActiveTypingSession()
+
         // Emit final session stability metrics
         attentionCollector?.emitSessionStability(sessionId: sessionId)
 
@@ -118,15 +129,18 @@ public class SynheartBehavior {
     /// - Task switch rate and notification load
     /// - Rolling baselines
     ///
-    /// If synheart-flux is not available, returns nil. Use `endSession` as fallback.
+    /// Flux is required - throws if not available.
     ///
     /// - Parameter sessionId: The session ID to end
-    /// - Returns: HSI-compliant behavioral payload, or nil if synheart-flux is unavailable
-    /// - Throws: BehaviorError if the SDK is not initialized
-    public func endSessionWithHsi(sessionId: String) throws -> HsiBehaviorPayload? {
+    /// - Returns: Tuple containing HSI-compliant behavioral payload and raw JSON string
+    /// - Throws: BehaviorError if the SDK is not initialized or Flux is not available
+    public func endSessionWithHsi(sessionId: String) throws -> (payload: HsiBehaviorPayload, rawJson: String) {
         guard isInitialized else {
             throw BehaviorError.notInitialized
         }
+
+        // End any active typing session before ending the behavior session
+        inputCollector?.endActiveTypingSession()
 
         // Emit final session stability metrics
         attentionCollector?.emitSessionStability(sessionId: sessionId)
@@ -135,12 +149,40 @@ public class SynheartBehavior {
         eventBatcher?.flush()
 
         // Get HSI output from session manager
-        return sessionManager?.endSessionWithHsi(sessionId: sessionId)
+        guard let sessionManager = sessionManager else {
+            throw BehaviorError.invalidConfiguration
+        }
+        
+        return try sessionManager.endSessionWithHsi(sessionId: sessionId)
     }
 
     /// Check if synheart-flux is available for HSI-compliant output.
     public var isFluxAvailable: Bool {
         return FluxBridge.shared.isAvailable
+    }
+    
+    /// Get the current active session ID, if any.
+    public func getCurrentSessionId() -> String? {
+        guard isInitialized else {
+            return nil
+        }
+        return sessionManager?.getCurrentSessionId()
+    }
+    
+    /// Get all events for the current session.
+    public func getSessionEvents() -> [BehaviorEvent] {
+        guard isInitialized else {
+            return []
+        }
+        return sessionManager?.getSessionEvents() ?? []
+    }
+    
+    /// Get the current app switch count for the active session.
+    public func getAppSwitchCount() -> Int {
+        guard isInitialized else {
+            return 0
+        }
+        return sessionManager?.getAppSwitchCount() ?? 0
     }
 
     /// Get current rolling statistics snapshot.
@@ -271,5 +313,7 @@ public enum BehaviorError: Error {
     case notInitialized
     case invalidConfiguration
     case sessionNotFound
+    case fluxNotAvailable
+    case fluxProcessingFailed
 }
 

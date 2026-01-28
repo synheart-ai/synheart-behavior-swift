@@ -24,19 +24,26 @@ public final class FluxBridge {
 
     private init() {
         initialized = checkRustLibraryAvailable()
-        if initialized {
-            print("FluxBridge: Successfully initialized synheart-flux")
-        } else {
-            print("FluxBridge: synheart-flux not available, using Swift fallback")
-        }
     }
 
     private func checkRustLibraryAvailable() -> Bool {
-        // Check if the Rust library symbols are available
-        // The library should be statically linked via XCFramework
-        let handle = dlopen(nil, RTLD_NOW)
-        let symbol = dlsym(handle, "flux_behavior_to_hsi")
-        return symbol != nil
+        // For static libraries, we can't use dlsym to check availability
+        // Instead, we'll try to call a simple function to see if it's linked
+        // If the symbol is not linked, this will cause a linker error at build time
+        // At runtime, if the function returns a valid result or doesn't crash, the library is available
+        // We use a test call to flux_version() which is always available and safe
+        return testFluxAvailability()
+    }
+    
+    private func testFluxAvailability() -> Bool {
+        // Try to get the version string - if this works, the library is linked
+        // For static libraries, if not linked, this will cause a linker error at build time
+        // At runtime, if we get here, the library should be available
+        if let versionPtr = flux_version() {
+            let version = String(cString: versionPtr)
+            return !version.isEmpty
+        }
+        return false
     }
 
     /// Check if synheart-flux is available.
@@ -53,17 +60,14 @@ public final class FluxBridge {
     /// - Returns: HSI JSON string, or nil if computation failed
     public func behaviorToHsi(_ sessionJson: String) -> String? {
         guard initialized else {
-            print("FluxBridge: Library not initialized")
             return nil
         }
 
         guard let jsonCString = sessionJson.cString(using: .utf8) else {
-            print("FluxBridge: Failed to convert JSON to C string")
             return nil
         }
 
         guard let resultPtr = flux_behavior_to_hsi(jsonCString) else {
-            print("FluxBridge: flux_behavior_to_hsi returned null")
             return nil
         }
 
@@ -151,7 +155,8 @@ public final class FluxBridge {
 // MARK: - C FFI Declarations
 
 // These functions are provided by the synheart-flux static library (XCFramework)
-// When the library is not available, these will fail at link time or return nil at runtime
+// For static libraries, symbols must be linked at compile time.
+// The app target must link against the XCFramework for these to be available.
 
 @_silgen_name("flux_behavior_to_hsi")
 private func flux_behavior_to_hsi(_ json: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -173,6 +178,12 @@ private func flux_behavior_processor_save_baselines(_ processor: OpaquePointer?)
 
 @_silgen_name("flux_behavior_processor_load_baselines")
 private func flux_behavior_processor_load_baselines(_ processor: OpaquePointer?, _ json: UnsafePointer<CChar>?) -> Int32
+
+@_silgen_name("flux_version")
+private func flux_version() -> UnsafePointer<CChar>?
+
+@_silgen_name("flux_last_error")
+private func flux_last_error() -> UnsafePointer<CChar>?
 
 // MARK: - Stateful Processor Wrapper
 

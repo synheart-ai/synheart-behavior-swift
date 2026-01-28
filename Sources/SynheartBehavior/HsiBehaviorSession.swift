@@ -182,46 +182,127 @@ public func convertToFluxSessionJson(
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
     var fluxEvents: [[String: Any]] = []
+    var scrollEventCount = 0
+    var scrollEventsWithReversal = 0
+    var scrollEventsWithoutReversal = 0
 
     for event in events {
+        // Map event type - skip events that Flux doesn't support
+        let eventType = mapEventType(event.type)
+        // Flux only accepts: scroll, tap, swipe, notification, call, typing, app_switch
+        // Skip "unknown" and "idle" (idle is calculated by Flux internally from event gaps)
+        if eventType == "unknown" || eventType == "idle" {
+            continue
+        }
+        
         let timestamp = formatter.string(from: Date(timeIntervalSince1970: Double(event.timestamp) / 1000.0))
 
         var fluxEvent: [String: Any] = [
             "timestamp": timestamp,
-            "event_type": mapEventType(event.type)
+            "event_type": eventType
         ]
 
         // Map event-specific data
         switch event.type {
         case .scrollVelocity, .scrollAcceleration, .scrollJitter, .scrollStop:
-            fluxEvent["scroll"] = [
+            scrollEventCount += 1
+            // Scroll direction must be "up" or "down" (Flux doesn't accept "unknown")
+            let scrollDirection = event.payload["direction"] as? String ?? "down"
+            let validDirection = (scrollDirection == "up" || scrollDirection == "down") ? scrollDirection : "down"
+            var scroll: [String: Any] = [
                 "velocity": event.payload["velocity"] ?? 0.0,
-                "direction": event.payload["direction"] ?? "down"
+                "direction": validDirection
             ]
+            // Include direction_reversal if available (Flux accepts this field)
+            // IMPORTANT: Always include direction_reversal, even if false, so Flux can calculate scroll jitter correctly
+            let directionReversal = event.payload["direction_reversal"] as? Bool ?? false
+            scroll["direction_reversal"] = directionReversal
+            
+            if directionReversal {
+                scrollEventsWithReversal += 1
+            } else {
+                scrollEventsWithoutReversal += 1
+            }
+            
+            fluxEvent["scroll"] = scroll
 
         case .tapRate, .longPressRate:
             fluxEvent["tap"] = [
-                "tap_duration_ms": event.payload["duration_ms"] ?? 0,
-                "long_press": event.type == .longPressRate
+                "tap_duration_ms": event.payload["duration_ms"] ?? event.payload["tap_duration_ms"] ?? 0,
+                "long_press": event.type == .longPressRate || (event.payload["long_press"] as? Bool ?? false)
             ]
 
         case .dragVelocity:
+            // Swipe direction must be "left" or "right" (Flux doesn't accept "unknown")
+            let swipeDirection = event.payload["direction"] as? String ?? "right"
+            let validDirection = (swipeDirection == "left" || swipeDirection == "right") ? swipeDirection : "right"
             fluxEvent["swipe"] = [
                 "velocity": event.payload["velocity"] ?? 0.0,
-                "direction": event.payload["direction"] ?? "unknown"
+                "direction": validDirection
             ]
 
         case .appSwitch:
             fluxEvent["app_switch"] = [
-                "from_app_id": event.payload["from_app"] ?? "",
-                "to_app_id": event.payload["to_app"] ?? ""
+                "from_app_id": event.payload["from_app_id"] ?? event.payload["from_app"] ?? "",
+                "to_app_id": event.payload["to_app_id"] ?? event.payload["to_app"] ?? ""
             ]
 
         case .typingCadence, .typingBurst:
-            fluxEvent["typing"] = [
-                "typing_speed_cpm": event.payload["cadence"] ?? 0.0,
-                "cadence_stability": event.payload["stability"] ?? 0.0
-            ]
+            var typing: [String: Any] = [:]
+            
+            // Convert typing speed from taps/second to characters per minute (CPM)
+            // typing_speed is in taps/second, multiply by 60 to get CPM
+            if let typingSpeed = event.payload["typing_speed"] as? Double {
+                typing["typing_speed_cpm"] = typingSpeed * 60.0
+            } else if let typingSpeedCpm = event.payload["typing_speed_cpm"] {
+                typing["typing_speed_cpm"] = typingSpeedCpm
+            } else if let cadence = event.payload["cadence"] {
+                typing["typing_speed_cpm"] = cadence
+            } else {
+                typing["typing_speed_cpm"] = 0.0
+            }
+            
+            // Include cadence stability
+            if let cadenceStability = event.payload["typing_cadence_stability"] {
+                typing["cadence_stability"] = cadenceStability
+            } else if let stability = event.payload["stability"] {
+                typing["cadence_stability"] = stability
+            } else {
+                typing["cadence_stability"] = 0.0
+            }
+            
+            // Include duration_sec if available
+            if let duration = event.payload["duration"] {
+                typing["duration_sec"] = duration
+            } else if let durationSec = event.payload["duration_sec"] {
+                typing["duration_sec"] = durationSec
+            }
+            
+            // Include pause_count if available (mapped from typing_gap_count)
+            if let pauseCount = event.payload["pause_count"] ?? event.payload["typing_gap_count"] {
+                typing["pause_count"] = pauseCount
+            }
+            
+            // Include detailed typing metrics that Flux uses for aggregation
+            if let typingTapCount = event.payload["typing_tap_count"] {
+                typing["typing_tap_count"] = typingTapCount
+            }
+            if let meanInterTapInterval = event.payload["mean_inter_tap_interval_ms"] {
+                typing["mean_inter_tap_interval_ms"] = meanInterTapInterval
+            }
+            if let typingBurstiness = event.payload["typing_burstiness"] {
+                typing["typing_burstiness"] = typingBurstiness
+            }
+            
+            // Include session boundaries if available
+            if let startAt = event.payload["start_at"] {
+                typing["start_at"] = startAt
+            }
+            if let endAt = event.payload["end_at"] {
+                typing["end_at"] = endAt
+            }
+            
+            fluxEvent["typing"] = typing
 
         default:
             // Other event types don't need special mapping
@@ -244,7 +325,6 @@ public func convertToFluxSessionJson(
         let jsonData = try JSONSerialization.data(withJSONObject: session)
         return String(data: jsonData, encoding: .utf8) ?? "{}"
     } catch {
-        print("FluxBridge: Failed to serialize session: \(error)")
         return "{}"
     }
 }
@@ -273,11 +353,160 @@ private func mapEventType(_ type: BehaviorEventType) -> String {
     }
 }
 
-/// Parse HSI JSON response into HsiBehaviorPayload.
+/// Parse HSI 1.0 JSON response into HsiBehaviorPayload (manual parsing).
+///
+/// Flux returns HSI 1.0 format with axes.behavior.readings structure.
+/// This function manually parses it and converts to HsiBehaviorPayload.
+///
+/// - Parameters:
+///   - hsiJson: JSON string from synheart-flux
+///   - sessionId: Session ID (if not in HSI JSON)
+///   - startTime: Session start time (if not in HSI JSON)
+///   - endTime: Session end time (if not in HSI JSON)
+/// - Returns: Parsed HSI payload, or nil if parsing fails
+public func parseHsiJsonManually(_ hsiJson: String, sessionId: String? = nil, startTime: Date? = nil, endTime: Date? = nil) -> HsiBehaviorPayload? {
+    guard let data = hsiJson.data(using: .utf8),
+          let hsi = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return nil
+    }
+    
+    // HSI 1.0 format: axes.behavior.readings array
+    guard let axes = hsi["axes"] as? [String: Any],
+          let behavior = axes["behavior"] as? [String: Any],
+          let readings = behavior["readings"] as? [[String: Any]] else {
+        return nil
+    }
+    
+    // Extract metrics from axis readings
+    var metricsMap: [String: Double] = [:]
+    for reading in readings {
+        if let axis = reading["axis"] as? String,
+           let score = reading["score"] as? Double {
+            metricsMap[axis] = score
+        }
+    }
+    
+    // Extract meta information
+    let meta = hsi["meta"] as? [String: Any]
+    
+    // Extract producer info
+    let producerJson = hsi["producer"] as? [String: Any]
+    let producer = HsiProducer(
+        name: producerJson?["name"] as? String ?? "synheart-flux",
+        version: producerJson?["version"] as? String ?? "0.1.0",
+        instanceId: producerJson?["instance_id"] as? String ?? ""
+    )
+    
+    // Extract provenance info (may be missing in some Flux versions)
+    let provenanceJson = hsi["provenance"] as? [String: Any]
+    let provenance = HsiProvenance(
+        sourceDeviceId: provenanceJson?["source_device_id"] as? String ?? "",
+        observedAtUtc: provenanceJson?["observed_at_utc"] as? String ?? "",
+        computedAtUtc: provenanceJson?["computed_at_utc"] as? String ?? ""
+    )
+    
+    // Extract quality info
+    let qualityJson = hsi["quality"] as? [String: Any]
+    let flagsArray = qualityJson?["flags"] as? [String] ?? []
+    let quality = HsiQuality(
+        coverage: qualityJson?["coverage"] as? Double ?? 0.0,
+        confidence: qualityJson?["confidence"] as? Double ?? 0.0,
+        flags: flagsArray
+    )
+    
+    // Build behavior metrics from readings
+    let behaviorMetrics = HsiBehavioralMetrics(
+        distractionScore: metricsMap["distraction"] ?? 0.0,
+        focusHint: metricsMap["focus"] ?? 0.0,
+        taskSwitchRate: metricsMap["task_switch_rate"] ?? 0.0,
+        notificationLoad: metricsMap["notification_load"] ?? 0.0,
+        burstiness: metricsMap["burstiness"] ?? 0.0,
+        scrollJitterRate: metricsMap["scroll_jitter_rate"] ?? 0.0,
+        interactionIntensity: metricsMap["interaction_intensity"] ?? 0.0,
+        deepFocusBlocks: meta?["deep_focus_blocks"] as? Int ?? 0,
+        idleRatio: metricsMap["idle_ratio"] ?? 0.0,
+        fragmentedIdleRatio: metricsMap["fragmented_idle_ratio"] ?? 0.0
+    )
+    
+    // Build baseline (if available)
+    let baseline: HsiBehaviorBaseline?
+    if let baselineDistraction = meta?["baseline_distraction"] as? Double,
+       let baselineFocus = meta?["baseline_focus"] as? Double {
+        baseline = HsiBehaviorBaseline(
+            distraction: baselineDistraction,
+            focus: baselineFocus,
+            distractionDeviationPct: meta?["distraction_deviation_pct"] as? Double,
+            sessionsInBaseline: meta?["sessions_in_baseline"] as? Int ?? 0
+        )
+    } else {
+        baseline = nil
+    }
+    
+    // Build event summary from meta
+    let eventSummary = HsiEventSummary(
+        totalEvents: meta?["total_events"] as? Int ?? 0,
+        scrollEvents: meta?["scroll_events"] as? Int ?? 0,
+        tapEvents: meta?["tap_events"] as? Int ?? 0,
+        appSwitches: meta?["app_switches"] as? Int ?? 0,
+        notifications: meta?["notifications"] as? Int ?? 0
+    )
+    
+    // Get session info from parameters, meta, or use defaults
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    
+    let sessionIdValue = sessionId ?? meta?["session_id"] as? String ?? ""
+    let startTimeUtc: String
+    let endTimeUtc: String
+    let durationSec: Double
+    
+    if let startTime = startTime, let endTime = endTime {
+        startTimeUtc = formatter.string(from: startTime)
+        endTimeUtc = formatter.string(from: endTime)
+        durationSec = endTime.timeIntervalSince(startTime)
+    } else if let startTimeStr = meta?["start_time_utc"] as? String,
+              let endTimeStr = meta?["end_time_utc"] as? String {
+        startTimeUtc = startTimeStr
+        endTimeUtc = endTimeStr
+        durationSec = meta?["duration_sec"] as? Double ?? 0.0
+    } else {
+        // Use current time as fallback
+        let now = Date()
+        startTimeUtc = formatter.string(from: now)
+        endTimeUtc = formatter.string(from: now)
+        durationSec = 0.0
+    }
+    
+    let window = HsiBehaviorWindow(
+        sessionId: sessionIdValue,
+        startTimeUtc: startTimeUtc,
+        endTimeUtc: endTimeUtc,
+        durationSec: durationSec,
+        behavior: behaviorMetrics,
+        baseline: baseline,
+        eventSummary: eventSummary
+    )
+    
+    return HsiBehaviorPayload(
+        hsiVersion: hsi["hsi_version"] as? String ?? "1.0.0",
+        producer: producer,
+        provenance: provenance,
+        quality: quality,
+        behaviorWindows: [window]
+    )
+}
+
+/// Parse HSI JSON response into HsiBehaviorPayload (legacy Codable method).
 ///
 /// - Parameter hsiJson: JSON string from synheart-flux
 /// - Returns: Parsed HSI payload, or nil if parsing fails
 public func parseHsiJson(_ hsiJson: String) -> HsiBehaviorPayload? {
+    // Try manual parsing first (HSI 1.0 format)
+    if let result = parseHsiJsonManually(hsiJson) {
+        return result
+    }
+    
+    // Fallback to Codable parsing (for older HSI formats)
     guard let data = hsiJson.data(using: .utf8) else {
         return nil
     }
@@ -286,18 +515,33 @@ public func parseHsiJson(_ hsiJson: String) -> HsiBehaviorPayload? {
         let decoder = JSONDecoder()
         return try decoder.decode(HsiBehaviorPayload.self, from: data)
     } catch {
-        print("FluxBridge: Failed to parse HSI JSON: \(error)")
         return nil
     }
+}
+
+/// Extract typing session summary from HSI JSON meta section.
+///
+/// - Parameter hsiJson: Raw HSI JSON string
+/// - Returns: Typing session summary dictionary, or nil if not found
+private func extractTypingSessionSummary(from hsiJson: String) -> [String: Any]? {
+    guard let data = hsiJson.data(using: .utf8),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let meta = json["meta"] as? [String: Any],
+          let typingSummary = meta["typing_session_summary"] as? [String: Any] else {
+        return nil
+    }
+    return typingSummary
 }
 
 /// Extract behavioral metrics dictionary from HSI payload.
 ///
 /// This returns metrics in a format compatible with the existing SDK output.
 ///
-/// - Parameter hsi: Parsed HSI payload
+/// - Parameters:
+///   - hsi: Parsed HSI payload
+///   - hsiJson: Optional raw HSI JSON string for extracting typing_session_summary from meta
 /// - Returns: Dictionary of behavioral metrics
-public func extractMetricsDictionary(from hsi: HsiBehaviorPayload) -> [String: Any]? {
+public func extractMetricsDictionary(from hsi: HsiBehaviorPayload, hsiJson: String? = nil) -> [String: Any]? {
     guard let window = hsi.behaviorWindows.first else {
         return nil
     }
@@ -331,6 +575,11 @@ public func extractMetricsDictionary(from hsi: HsiBehaviorPayload) -> [String: A
             metrics["distraction_deviation_pct"] = deviation
         }
         metrics["sessions_in_baseline"] = baseline.sessionsInBaseline
+    }
+    
+    // Extract typing_session_summary from meta section if raw JSON is provided
+    if let hsiJson = hsiJson, let typingSummary = extractTypingSessionSummary(from: hsiJson) {
+        metrics["typing_session_summary"] = typingSummary
     }
 
     return metrics

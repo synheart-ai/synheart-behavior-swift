@@ -2,6 +2,9 @@ import Foundation
 #if canImport(UIKit)
 import UIKit
 #endif
+#if canImport(SystemConfiguration)
+import SystemConfiguration
+#endif
 
 /// Manages behavioral tracking sessions and aggregates statistics.
 internal class SessionManager {
@@ -34,6 +37,16 @@ internal class SessionManager {
     private var lastForegroundDuration: Double?
     private var lastIdleGapSeconds: Double?
 
+    // Device context tracking
+    private var startScreenBrightness: CGFloat = 0.5
+    private var startOrientation: UIDeviceOrientation = .portrait
+    private var lastOrientation: UIDeviceOrientation = .portrait
+    private var orientationChangeCount: Int = 0
+
+    // Session spacing tracking
+    private var lastAppUseTime: Date?
+    private var currentSessionSpacing: Int64 = 0
+
     // Flux processor for HSI computation (optional)
     private var fluxProcessor: FluxBehaviorProcessor?
 
@@ -45,6 +58,35 @@ internal class SessionManager {
         defer { lock.unlock() }
 
         currentSessionId = sessionId
+        
+        // Capture device context at session start
+        #if canImport(UIKit)
+        // Note: UIScreen.main.brightness may not be available on simulators
+        // It requires a physical device to get accurate brightness values
+        startScreenBrightness = UIScreen.main.brightness
+        startOrientation = UIDevice.current.orientation
+        lastOrientation = startOrientation
+        orientationChangeCount = 0
+        
+        // Register for orientation change notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(orientationDidChange),
+            name: UIDevice.orientationDidChangeNotification,
+            object: nil
+        )
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        #endif
+        
+        // Calculate session spacing (time between end of previous session and start of current session)
+        let now = Date()
+        if let lastUse = lastAppUseTime {
+            let spacingMs = Int64((now.timeIntervalSince1970 - lastUse.timeIntervalSince1970) * 1000)
+            currentSessionSpacing = spacingMs
+        } else {
+            currentSessionSpacing = 0
+        }
+        
         sessionStartTime = currentTimestampMs()
         eventCount = 0
 
@@ -78,7 +120,7 @@ internal class SessionManager {
             do {
                 fluxProcessor = try FluxBehaviorProcessor(baselineWindowSessions: 20)
             } catch {
-                print("SessionManager: Failed to create FluxBehaviorProcessor: \(error)")
+                // Failed to create processor, will use stateless processing
             }
         }
     }
@@ -121,18 +163,18 @@ internal class SessionManager {
 
     /// End the current session and return HSI-compliant output using synheart-flux.
     ///
-    /// If synheart-flux is not available, returns nil. Use `endSession` as fallback.
-    func endSessionWithHsi(sessionId: String) -> HsiBehaviorPayload? {
+    /// Flux is required - throws if not available.
+    /// Returns a tuple containing both the parsed payload and the raw JSON string.
+    func endSessionWithHsi(sessionId: String) throws -> (payload: HsiBehaviorPayload, rawJson: String) {
         lock.lock()
         defer { lock.unlock() }
 
         guard currentSessionId == sessionId else {
-            return nil
+            throw BehaviorError.sessionNotFound
         }
 
         guard FluxBridge.shared.isAvailable else {
-            print("SessionManager: synheart-flux not available for HSI output")
-            return nil
+            throw BehaviorError.fluxNotAvailable
         }
 
         let endTimestamp = currentTimestampMs()
@@ -158,28 +200,251 @@ internal class SessionManager {
 
         // Compute HSI metrics using Rust
         var hsiPayload: HsiBehaviorPayload?
+        var rawHsiJson: String?
 
         if let processor = fluxProcessor {
             // Use stateful processor with baselines
             do {
                 let hsiJson = try processor.process(fluxJson)
-                hsiPayload = parseHsiJson(hsiJson)
-                print("SessionManager: Successfully computed HSI metrics using synheart-flux (stateful)")
+                rawHsiJson = hsiJson  // Store raw JSON
+                // Parse HSI 1.0 format manually (not using Codable)
+                // Pass session info since it might not be in HSI JSON
+                if let parsed = parseHsiJsonManually(hsiJson, sessionId: sessionId, startTime: startTime, endTime: endTime) {
+                    hsiPayload = parsed
+                }
             } catch {
-                print("SessionManager: Stateful processing failed: \(error)")
+                // Stateful processing failed, will fallback to stateless
             }
         }
 
         // Fallback to stateless if stateful failed
         if hsiPayload == nil {
-            if let hsiJson = FluxBridge.shared.behaviorToHsi(fluxJson) {
-                hsiPayload = parseHsiJson(hsiJson)
-                print("SessionManager: Successfully computed HSI metrics using synheart-flux (stateless)")
+            guard let hsiJson = FluxBridge.shared.behaviorToHsi(fluxJson) else {
+                throw BehaviorError.fluxProcessingFailed
             }
+            rawHsiJson = hsiJson  // Store raw JSON
+            // Parse HSI 1.0 format manually (not using Codable)
+            // Pass session info since it might not be in HSI JSON
+            guard let parsed = parseHsiJsonManually(hsiJson, sessionId: sessionId, startTime: startTime, endTime: endTime) else {
+                throw BehaviorError.fluxProcessingFailed
+            }
+            hsiPayload = parsed
         }
 
+        // Update lastAppUseTime to session end time for next session's spacing calculation
+        lastAppUseTime = endTime
+        
+        // Inject system state, device context, and session spacing into the raw HSI JSON meta section
+        if var rawJson = rawHsiJson {
+            rawJson = injectSystemStateIntoHsiJson(rawJson)
+            rawJson = injectDeviceContextIntoHsiJson(rawJson)
+            rawJson = injectSessionSpacingIntoHsiJson(rawJson)
+            rawHsiJson = rawJson
+        }
+        
+        // Clean up orientation notifications
+        #if canImport(UIKit)
+        NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
+        UIDevice.current.endGeneratingDeviceOrientationNotifications()
+        #endif
+
         currentSessionId = nil
-        return hsiPayload
+        
+        guard let result = hsiPayload, let rawJson = rawHsiJson else {
+            throw BehaviorError.fluxProcessingFailed
+        }
+        
+        return (payload: result, rawJson: rawJson)
+    }
+    
+    /// Inject system state data into HSI JSON meta section.
+    private func injectSystemStateIntoHsiJson(_ hsiJson: String) -> String {
+        guard let data = hsiJson.data(using: .utf8),
+              var hsi = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return hsiJson
+        }
+        
+        // Get or create meta section
+        var meta = hsi["meta"] as? [String: Any] ?? [:]
+        
+        // Collect system state data
+        let internetState = isInternetConnected()
+        let charging = isCharging()
+        let doNotDisturb = isDoNotDisturbEnabled()
+        
+        // Add system state to meta
+        meta["internet_state"] = internetState
+        meta["charging"] = charging
+        meta["do_not_disturb"] = doNotDisturb
+        
+        // Update meta in HSI JSON
+        hsi["meta"] = meta
+        
+        // Convert back to JSON string
+        if let jsonData = try? JSONSerialization.data(withJSONObject: hsi, options: .prettyPrinted),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            return jsonString
+        }
+        
+        return hsiJson
+    }
+    
+    /// Check if device is connected to internet.
+    private func isInternetConnected() -> Bool {
+        #if canImport(UIKit) && canImport(SystemConfiguration)
+        var zeroAddress = sockaddr_in()
+        zeroAddress.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        zeroAddress.sin_family = sa_family_t(AF_INET)
+        
+        guard let defaultRouteReachability = withUnsafePointer(to: &zeroAddress, {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                SCNetworkReachabilityCreateWithAddress(nil, $0)
+            }
+        }) else {
+            return false
+        }
+        
+        var flags: SCNetworkReachabilityFlags = []
+        if !SCNetworkReachabilityGetFlags(defaultRouteReachability, &flags) {
+            return false
+        }
+        
+        let isReachable = flags.contains(.reachable)
+        let needsConnection = flags.contains(.connectionRequired)
+        
+        return isReachable && !needsConnection
+        #else
+        return false
+        #endif
+    }
+    
+    /// Check if device is charging.
+    private func isCharging() -> Bool {
+        #if canImport(UIKit)
+        // Ensure battery monitoring is enabled (should be enabled during SDK init)
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        
+        let state = UIDevice.current.batteryState
+        
+        // Handle unknown state - on simulator or if monitoring not ready
+        if state == .unknown {
+            #if targetEnvironment(simulator)
+            // Simulator doesn't support battery state
+            return false
+            #else
+            // On real device, if state is unknown, it might not be ready yet
+            return false
+            #endif
+        }
+        
+        return state == .charging || state == .full
+        #else
+        return false
+        #endif
+    }
+    
+    /// Check if Do Not Disturb is enabled.
+    /// Note: iOS doesn't provide a public API to detect DND status.
+    /// This always returns false as we can't reliably detect it.
+    private func isDoNotDisturbEnabled() -> Bool {
+        // On iOS, there is no public API to detect Do Not Disturb status
+        // Apple restricts access to DND settings for privacy reasons
+        // This would require private APIs which are not allowed in App Store apps
+        // Therefore, we always return false (DND not detected)
+        return false
+    }
+    
+    /// Handle orientation change notification.
+    @objc private func orientationDidChange() {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        #if canImport(UIKit)
+        let currentOrientation = UIDevice.current.orientation
+        
+        // Count orientation changes by comparing with last orientation
+        // This ensures we count all changes (portrait->landscape->portrait = 2 changes)
+        if currentOrientation != lastOrientation &&
+           currentOrientation.isValidInterfaceOrientation &&
+           currentSessionId != nil {
+            orientationChangeCount += 1
+            lastOrientation = currentOrientation
+        }
+        #endif
+    }
+    
+    /// Inject device context data into HSI JSON meta section.
+    private func injectDeviceContextIntoHsiJson(_ hsiJson: String) -> String {
+        guard let data = hsiJson.data(using: .utf8),
+              var hsi = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return hsiJson
+        }
+        
+        // Get or create meta section
+        var meta = hsi["meta"] as? [String: Any] ?? [:]
+        
+        #if canImport(UIKit)
+        // Calculate average screen brightness (start + end) / 2
+        // Note: UIScreen.main.brightness may return 0.0 or default values on simulators
+        // It requires a physical device to get accurate brightness values
+        let endScreenBrightness = UIScreen.main.brightness
+        let avgScreenBrightness = Double((startScreenBrightness + endScreenBrightness) / 2.0)
+        
+        // Only add brightness if it's a valid value (not 0.0, which might indicate unavailable)
+        // On real devices, brightness should be between 0.0 and 1.0
+        // We'll still add it even if 0.0, as that might be the actual brightness
+        // The UI can handle displaying it appropriately
+        meta["avg_screen_brightness"] = avgScreenBrightness
+        
+        // Get orientation string
+        let startOrientationStr: String
+        switch startOrientation {
+        case .landscapeLeft, .landscapeRight:
+            startOrientationStr = "landscape"
+        default:
+            startOrientationStr = "portrait"
+        }
+        
+        // Add device context to meta
+        meta["start_orientation"] = startOrientationStr
+        meta["orientation_changes"] = orientationChangeCount
+        #endif
+        
+        // Update meta in HSI JSON
+        hsi["meta"] = meta
+        
+        // Convert back to JSON string
+        if let jsonData = try? JSONSerialization.data(withJSONObject: hsi, options: .prettyPrinted),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            return jsonString
+        }
+        
+        return hsiJson
+    }
+    
+    /// Inject session spacing into HSI JSON meta section.
+    private func injectSessionSpacingIntoHsiJson(_ hsiJson: String) -> String {
+        guard let data = hsiJson.data(using: .utf8),
+              var hsi = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return hsiJson
+        }
+        
+        // Get or create meta section
+        var meta = hsi["meta"] as? [String: Any] ?? [:]
+        
+        // Add session spacing (time in milliseconds between end of previous session and start of current session)
+        meta["session_spacing"] = currentSessionSpacing
+        
+        // Update meta in HSI JSON
+        hsi["meta"] = meta
+        
+        // Convert back to JSON string
+        if let jsonData = try? JSONSerialization.data(withJSONObject: hsi, options: .prettyPrinted),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            return jsonString
+        }
+        
+        return hsiJson
     }
 
     /// Get the current session ID.
@@ -187,6 +452,20 @@ internal class SessionManager {
         lock.lock()
         defer { lock.unlock() }
         return currentSessionId
+    }
+    
+    /// Get all events for the current session.
+    func getSessionEvents() -> [BehaviorEvent] {
+        lock.lock()
+        defer { lock.unlock() }
+        return sessionEvents
+    }
+    
+    /// Get the current app switch count for the session.
+    func getAppSwitchCount() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return appSwitchCount
     }
 
     /// Increment event count.
