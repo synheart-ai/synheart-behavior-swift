@@ -13,6 +13,7 @@ internal class AttentionSignalCollector {
     private var backgroundStartTime: Int64 = 0
     private var appSwitchTimes: [Int64] = []
     private let appSwitchWindowMs: Int64 = 60000  // 1 minute window
+    private var isInForeground = true  // Track foreground state to avoid double-counting
 
     // Idle gap tracking
     private var lastActivityTime: Int64 = 0
@@ -73,9 +74,12 @@ internal class AttentionSignalCollector {
         )
 
         // Start tracking
+        // Set foreground start time - if app is already active, use current time
+        // This ensures app switches are counted correctly
         foregroundStartTime = currentTimestampMs()
         sessionStartTime = foregroundStartTime
         lastActivityTime = foregroundStartTime
+        isInForeground = true  // App starts in foreground
         updateActivityTime()
     }
 
@@ -86,17 +90,29 @@ internal class AttentionSignalCollector {
     }
 
     @objc private func appDidBecomeActive() {
+        onAppForegrounded()
+    }
+    
+    @objc private func appWillEnterForeground() {
+        onAppForegrounded()
+    }
+    
+    private func onAppForegrounded() {
         let currentTime = currentTimestampMs()
 
         guard let sessionId = sessionManager?.getCurrentSessionId() else {
             return
         }
+        
+        // Only process if we were actually in background
+        guard !isInForeground else {
+            return
+        }
+        
+        isInForeground = true
+        foregroundStartTime = currentTime
 
-        // Record app switch
-        appSwitchTimes.append(currentTime)
-        appSwitchTimes.removeAll { currentTime - $0 > appSwitchWindowMs }
-
-        // Record foreground duration from previous background
+        // Emit app switch event if we had a background period (not on initial launch)
         if backgroundStartTime > 0 {
             let backgroundDuration = currentTime - backgroundStartTime
             fragmentationCount += 1
@@ -108,43 +124,60 @@ internal class AttentionSignalCollector {
             )
         }
 
-        foregroundStartTime = currentTime
+        backgroundStartTime = 0  // Reset background start time
         updateActivityTime()
-
-        // Update session stats
-        sessionManager?.recordAppSwitch()
     }
 
     @objc private func appWillResignActive() {
-        updateActivityTime()
+        // Also handle backgrounding here (matching Dart SDK - both willResignActive and didEnterBackground call onAppBackgrounded)
+        // This ensures app switches are counted even if didEnterBackground doesn't fire
+        onAppBackgrounded()
     }
-
-    @objc private func appDidEnterBackground() {
+    
+    private func onAppBackgrounded() {
         let currentTime = currentTimestampMs()
-
+        
         guard let sessionId = sessionManager?.getCurrentSessionId() else {
             return
         }
-
+        
+        // Only process if we were actually in foreground (avoid double-counting)
+        guard isInForeground else {
+            return
+        }
+        
+        isInForeground = false
         backgroundStartTime = currentTime
-
+        
         // Calculate and emit foreground duration
         if foregroundStartTime > 0 {
             let foregroundDuration = currentTime - foregroundStartTime
             totalForegroundDuration += foregroundDuration
-
+            
             emitForegroundDurationEvent(
                 sessionId: sessionId,
                 duration: foregroundDuration
             )
-
+            
             sessionManager?.recordForegroundDuration(Double(foregroundDuration) / 1000.0)
+        }
+        
+        // Count app switch when going to background (matching Dart SDK behavior)
+        // Only count if we were actually in foreground (not on initial launch)
+        // This ensures app switch is counted even if session ends while in background
+        if foregroundStartTime > 0 {
+            appSwitchTimes.append(currentTime)
+            appSwitchTimes.removeAll { currentTime - $0 > appSwitchWindowMs }
+            sessionManager?.recordAppSwitch()
         }
     }
 
-    @objc private func appWillEnterForeground() {
-        updateActivityTime()
+    @objc private func appDidEnterBackground() {
+        // Also handle backgrounding here (matching Dart SDK - both willResignActive and didEnterBackground call onAppBackgrounded)
+        // The onAppBackgrounded method will check isInForeground to avoid double-counting
+        onAppBackgrounded()
     }
+
 
     @objc private func userDidInteract() {
         updateActivityTime()
