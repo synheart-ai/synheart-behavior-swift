@@ -302,6 +302,13 @@ public func convertToFluxSessionJson(
                 typing["end_at"] = endAt
             }
             
+            // Correction and clipboard counts for Flux (clipboard_activity_rate, correction_rate)
+            typing["number_of_backspace"] = event.payload["backspace_count"] ?? event.payload["number_of_backspace"] ?? 0
+            typing["number_of_delete"] = event.payload["number_of_delete"] ?? 0
+            typing["number_of_copy"] = event.payload["number_of_copy"] ?? 0
+            typing["number_of_paste"] = event.payload["number_of_paste"] ?? 0
+            typing["number_of_cut"] = event.payload["number_of_cut"] ?? 0
+            
             fluxEvent["typing"] = typing
 
         default:
@@ -393,7 +400,7 @@ public func parseHsiJsonManually(_ hsiJson: String, sessionId: String? = nil, st
     let producerJson = hsi["producer"] as? [String: Any]
     let producer = HsiProducer(
         name: producerJson?["name"] as? String ?? "synheart-flux",
-        version: producerJson?["version"] as? String ?? "0.1.0",
+        version: producerJson?["version"] as? String ?? "0.3.0",
         instanceId: producerJson?["instance_id"] as? String ?? ""
     )
     
@@ -520,15 +527,39 @@ public func parseHsiJson(_ hsiJson: String) -> HsiBehaviorPayload? {
 }
 
 /// Extract typing session summary from HSI JSON meta section.
+/// Flux puts typing summary fields directly in top-level meta (clipboard_activity_rate,
+/// correction_rate, typing_session_count, typing_metrics, etc.), not under a nested key.
 ///
 /// - Parameter hsiJson: Raw HSI JSON string
-/// - Returns: Typing session summary dictionary, or nil if not found
+/// - Returns: Typing session summary dictionary, or nil if meta missing
 private func extractTypingSessionSummary(from hsiJson: String) -> [String: Any]? {
     guard let data = hsiJson.data(using: .utf8),
           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let meta = json["meta"] as? [String: Any],
-          let typingSummary = meta["typing_session_summary"] as? [String: Any] else {
+          let meta = json["meta"] as? [String: Any] else {
         return nil
+    }
+    var typingSummary: [String: Any] = [:]
+    typingSummary["typing_session_count"] = meta["typing_session_count"] as? Int ?? 0
+    typingSummary["average_keystrokes_per_session"] = meta["average_keystrokes_per_session"] as? Double ?? 0.0
+    typingSummary["average_typing_session_duration"] = meta["average_typing_session_duration"] as? Double ?? 0.0
+    typingSummary["average_typing_speed"] = meta["average_typing_speed"] as? Double ?? 0.0
+    typingSummary["average_typing_gap"] = meta["average_typing_gap"] as? Double ?? 0.0
+    typingSummary["average_inter_tap_interval"] = meta["average_inter_tap_interval"] as? Double ?? 0.0
+    typingSummary["typing_cadence_stability"] = meta["typing_cadence_stability"] as? Double ?? 0.0
+    typingSummary["burstiness_of_typing"] = meta["burstiness_of_typing"] as? Double ?? 0.0
+    if let totalInt = meta["total_typing_duration"] as? Int {
+        typingSummary["total_typing_duration"] = Double(totalInt)
+    } else {
+        typingSummary["total_typing_duration"] = meta["total_typing_duration"] as? Double ?? 0.0
+    }
+    typingSummary["active_typing_ratio"] = meta["active_typing_ratio"] as? Double ?? 0.0
+    typingSummary["typing_contribution_to_interaction_intensity"] = meta["typing_contribution_to_interaction_intensity"] as? Double ?? 0.0
+    typingSummary["deep_typing_blocks"] = meta["deep_typing_blocks"] as? Int ?? 0
+    typingSummary["typing_fragmentation"] = meta["typing_fragmentation"] as? Double ?? 0.0
+    typingSummary["clipboard_activity_rate"] = meta["clipboard_activity_rate"] as? Double ?? 0.0
+    typingSummary["correction_rate"] = meta["correction_rate"] as? Double ?? 0.0
+    if let typingMetrics = meta["typing_metrics"] as? [[String: Any]] {
+        typingSummary["typing_metrics"] = typingMetrics
     }
     return typingSummary
 }

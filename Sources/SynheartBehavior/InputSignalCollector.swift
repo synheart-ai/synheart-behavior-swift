@@ -26,6 +26,11 @@ internal class InputSignalCollector {
         var keystrokes: [Int64]  // Timestamps of keystrokes
         var interKeyLatencies: [Int64]  // Inter-key intervals in ms (only actual intervals, not 0 for first keystroke)
         var previousLength: Int = 0
+        var backspaceCount: Int = 0   // Only actual backspace/delete taps; cut removals are not counted
+        var lastDeletionAmount: Int = 0  // Last length decrease we attributed to backspace; undone when recordCut() is called
+        var numberOfCopy: Int = 0    // Set via recordCopy() from custom text view
+        var numberOfPaste: Int = 0   // Set via recordPaste() from custom text view
+        var numberOfCut: Int = 0     // Set via recordCut() from custom text view
     }
 
     init(sdk: SynheartBehavior, sessionManager: SessionManager) {
@@ -152,6 +157,9 @@ internal class InputSignalCollector {
         // Calculate typing cadence stability (inverse of coefficient of variation)
         let typingCadenceStability = calculateCadenceStability(session.interKeyLatencies)
         
+        // Typing cadence variability: standard deviation of inter-tap intervals (ms), aligned with Kotlin/Dart
+        let typingCadenceVariability = calculateCadenceVariability(session.interKeyLatencies)
+        
         // Calculate typing activity ratio (time spent typing vs total session time)
         let activeTimeMs = session.interKeyLatencies.filter { $0 < activityThresholdMs }.reduce(0) { $0 + $1 }
         let typingActivityRatio = durationMs > 0 ? Double(activeTimeMs) / Double(durationMs) : 0.0
@@ -176,26 +184,33 @@ internal class InputSignalCollector {
             return
         }
         
-        // Emit typing event with all metrics
+        // Emit typing event with all metrics (aligned with Kotlin/Dart; correction/clipboard for Flux)
+        var payload: [String: Any] = [
+            "typing_tap_count": typingTapCount,
+            "typing_speed": typingSpeed,
+            "mean_inter_tap_interval_ms": meanInterTapIntervalMs,
+            "typing_cadence_variability": typingCadenceVariability,
+            "typing_cadence_stability": typingCadenceStability,
+            "typing_gap_count": typingGapCount,
+            "typing_gap_ratio": typingGapRatio,
+            "typing_burstiness": typingBurstiness,
+            "typing_activity_ratio": typingActivityRatio,
+            "typing_interaction_intensity": typingInteractionIntensity,
+            "duration": durationSeconds,
+            "start_at": startAt,
+            "end_at": endAt,
+            "deep_typing": deepTyping,
+            "backspace_count": session.backspaceCount,
+            "number_of_delete": 0,  // iOS has no forward-delete key
+            "number_of_copy": session.numberOfCopy,
+            "number_of_paste": session.numberOfPaste,
+            "number_of_cut": session.numberOfCut
+        ]
         let event = BehaviorEvent(
             sessionId: sessionId,
             timestamp: currentTimestampMs(),
-            type: .typingCadence,  // Using typingCadence type, but with complete typing metrics
-            payload: [
-                "typing_tap_count": typingTapCount,
-                "typing_speed": typingSpeed,
-                "mean_inter_tap_interval_ms": meanInterTapIntervalMs,
-                "typing_cadence_stability": typingCadenceStability,
-                "typing_gap_count": typingGapCount,
-                "typing_gap_ratio": typingGapRatio,
-                "typing_burstiness": typingBurstiness,
-                "typing_activity_ratio": typingActivityRatio,
-                "typing_interaction_intensity": typingInteractionIntensity,
-                "duration": durationSeconds,
-                "start_at": startAt,
-                "end_at": endAt,
-                "deep_typing": deepTyping
-            ]
+            type: .typingCadence,
+            payload: payload
         )
         
         sdk?.emitEvent(event)
@@ -218,25 +233,50 @@ internal class InputSignalCollector {
             return
         }
         
-        // Only track when text is added (not deleted)
         if currentLength > session.previousLength {
             let now = currentTimestampMs()
-            
-            // Calculate inter-key latency (only store actual intervals)
             if let lastKeystroke = session.keystrokes.last {
                 let latency = now - lastKeystroke
                 session.interKeyLatencies.append(latency)
             }
-            // First keystroke: don't store anything (no previous keystroke to measure interval)
-            
             session.keystrokes.append(now)
             session.previousLength = currentLength
             currentTypingSession = session
+        } else if currentLength < session.previousLength {
+            let deleted = session.previousLength - currentLength
+            session.backspaceCount += deleted
+            session.lastDeletionAmount = deleted  // So recordCut() can subtract this (cut shouldn't count as backspace)
+            session.previousLength = currentLength
+            currentTypingSession = session
         } else {
-            // Text was deleted, update previous length
             session.previousLength = currentLength
             currentTypingSession = session
         }
+    }
+    
+    /// Record a copy action (call from custom UITextView/UITextField that overrides copy).
+    func recordCopy() {
+        guard var session = currentTypingSession else { return }
+        session.numberOfCopy += 1
+        currentTypingSession = session
+    }
+    
+    /// Record a paste action (call from custom UITextView/UITextField that overrides paste).
+    func recordPaste() {
+        guard var session = currentTypingSession else { return }
+        session.numberOfPaste += 1
+        currentTypingSession = session
+    }
+    
+    /// Record a cut action (call from custom UITextView/UITextField that overrides cut).
+    /// Also undoes the last backspace count for the removed length so cut is not counted as backspace.
+    func recordCut() {
+        guard var session = currentTypingSession else { return }
+        session.numberOfCut += 1
+        // That length decrease was a cut, not backspace — don't count it toward correction_rate
+        session.backspaceCount = max(0, session.backspaceCount - session.lastDeletionAmount)
+        session.lastDeletionAmount = 0
+        currentTypingSession = session
     }
     
     private func calculateBurstiness(_ latencies: [Int64]) -> Double {
@@ -260,6 +300,17 @@ internal class InputSignalCollector {
         let burstiness = calculateBurstiness(latencies)
         // Stability is inverse of burstiness, normalized to 0-1
         return 1.0 / (1.0 + burstiness)
+    }
+    
+    /// Standard deviation of inter-tap intervals in ms (typing_cadence_variability), aligned with Kotlin/Dart.
+    private func calculateCadenceVariability(_ latencies: [Int64]) -> Double {
+        guard latencies.count > 1 else {
+            return 0.0
+        }
+        let doubles = latencies.map { Double($0) }
+        let mean = doubles.reduce(0, +) / Double(doubles.count)
+        let variance = doubles.map { pow($0 - mean, 2) }.reduce(0, +) / Double(doubles.count)
+        return sqrt(variance)
     }
 
     /// Get current typing statistics.

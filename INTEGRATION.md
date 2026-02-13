@@ -7,12 +7,12 @@ A simple guide to integrate Synheart Behavioral SDK into your iOS app.
 ### Via Xcode
 1. File → Add Packages...
 2. Enter: `https://github.com/synheart-ai/synheart-behavior-ios.git`
-3. Select version: `0.1.0`
+3. Select version: `0.3.0`
 
 ### Via Package.swift
 ```swift
 dependencies: [
-    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "0.1.0")
+    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "0.3.0")
 ]
 ```
 
@@ -73,6 +73,10 @@ behavior.setEventHandler { event in
 }
 
 // ... user interacts with your app ...
+
+// Optional: report copy/paste/cut for clipboard_activity_rate (use a custom text field that calls these)
+// behavior.recordCopy()  behavior.recordPaste()  behavior.recordCut()
+// Example app uses BehaviorTrackingTextField; see Example/ExampleApp/BehaviorTrackingTextField.swift
 
 // End session and get HSI metrics
 let (hsiPayload, rawHsiJson) = try behavior.endSessionWithHsi(sessionId: sessionId)

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-12
+
+### Added
+
+- **Clipboard and correction rates**: Typing session summary from Flux now includes `clipboard_activity_rate` and `correction_rate` (synheart-flux 0.3.0+). SDK sends `number_of_backspace`, `number_of_copy`, `number_of_paste`, `number_of_cut` (and `number_of_delete` as 0 on iOS) in typing events so Flux can compute these rates.
+- **Public API for clipboard**: `SynheartBehavior.recordCopy()`, `recordPaste()`, and `recordCut()` so apps can report copy/paste/cut when the user performs those actions (e.g. from a custom text field that overrides `copy(_:)`/`paste(_:)`/`cut(_:)`).
+- **Example: BehaviorTrackingTextField**: A `UITextField` subclass that notifies the SDK on copy/paste/cut; use it or wire the same calls in your own text input to get non-zero clipboard counts.
+- **Typing metrics alignment**: Typing events now include `typing_cadence_variability` and `number_of_delete` (0 on iOS), matching Kotlin/Dart. Session results UI shows all typing metrics in the event card.
+
+### Fixed
+
+- **Cut vs backspace**: Text removed by **Cut** is no longer counted as backspace; only actual backspace/delete taps contribute to `backspace_count` and thus to `correction_rate`.
+- **Taps while keyboard open**: Tap and long-press events are **not** counted when a text field or text view is first responder (keyboard open), so typing interaction is not double-counted as tap events.
+
+### Changed
+
+- Typing session summary is read from top-level HSI `meta` (Flux format); `clipboard_activity_rate` and `correction_rate` are included when available from Flux.
+- Example app typing hint updated to mention Copy/Paste/Cut for testing clipboard counts.
+
 ## [0.1.0] - 2026-01-28
 
 ### Added

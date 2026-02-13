@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		903C5215B8052117DD4FF537 /* SessionResultsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65D68ECA2BF920A9BE36D8B /* SessionResultsViewController.swift */; };
+		B1E4A2C3D5F60718A9B0C1D2 /* BehaviorTrackingTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5B6C7D8E90123A4B5C6D7 /* BehaviorTrackingTextField.swift */; };
 		BEB36F96AFD4E4D2AE549EEA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CD9F8D7022A1282B5700BC /* AppDelegate.swift */; };
 		D0D29FF31CB93CC15CB65B33 /* SynheartBehavior in Frameworks */ = {isa = PBXBuildFile; productRef = 914CED1DC39AAD9202FB29E4 /* SynheartBehavior */; };
 		F2835BA69C557A134C9F2C4D /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5287597C8AD532688CC1432A /* MainViewController.swift */; };
@@ -20,6 +21,7 @@
 		597DFAA70149577CB840168A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		926C3D981D8F7AB7B3F2E007 /* ExampleApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ExampleApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A65D68ECA2BF920A9BE36D8B /* SessionResultsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionResultsViewController.swift; sourceTree = "<group>"; };
+		F4A5B6C7D8E90123A4B5C6D7 /* BehaviorTrackingTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehaviorTrackingTextField.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -38,6 +40,7 @@
 			isa = PBXGroup;
 			children = (
 				25CD9F8D7022A1282B5700BC /* AppDelegate.swift */,
+				F4A5B6C7D8E90123A4B5C6D7 /* BehaviorTrackingTextField.swift */,
 				597DFAA70149577CB840168A /* Info.plist */,
 				5287597C8AD532688CC1432A /* MainViewController.swift */,
 				A65D68ECA2BF920A9BE36D8B /* SessionResultsViewController.swift */,
@@ -134,6 +137,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BEB36F96AFD4E4D2AE549EEA /* AppDelegate.swift in Sources */,
+				B1E4A2C3D5F60718A9B0C1D2 /* BehaviorTrackingTextField.swift in Sources */,
 				F2835BA69C557A134C9F2C4D /* MainViewController.swift in Sources */,
 				903C5215B8052117DD4FF537 /* SessionResultsViewController.swift in Sources */,
 			);

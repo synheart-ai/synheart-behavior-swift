@@ -184,6 +184,24 @@ public class SynheartBehavior {
         }
         return sessionManager?.getAppSwitchCount() ?? 0
     }
+    
+    /// Record a copy action in the current typing session.
+    /// Call from a custom UITextView/UITextField that overrides copy(_:) so Flux can compute clipboard_activity_rate.
+    public func recordCopy() {
+        inputCollector?.recordCopy()
+    }
+    
+    /// Record a paste action in the current typing session.
+    /// Call from a custom UITextView/UITextField that overrides paste(_:) so Flux can compute clipboard_activity_rate.
+    public func recordPaste() {
+        inputCollector?.recordPaste()
+    }
+    
+    /// Record a cut action in the current typing session.
+    /// Call from a custom UITextView/UITextField that overrides cut(_:) so Flux can compute clipboard_activity_rate.
+    public func recordCut() {
+        inputCollector?.recordCut()
+    }
 
     /// Get current rolling statistics snapshot.
     public func getCurrentStats() throws -> BehaviorStats {

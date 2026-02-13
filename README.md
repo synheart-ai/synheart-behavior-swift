@@ -21,14 +21,14 @@ Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "0.1.0")
+    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "0.3.0")
 ]
 ```
 
 Or add via Xcode:
 1. File → Add Packages...
 2. Enter: `https://github.com/synheart-ai/synheart-behavior-ios.git`
-3. Select version: `0.1.0`
+3. Select version: `0.3.0`
 
 **📖 New to the SDK?** See [INTEGRATION.md](INTEGRATION.md) for a quick start guide.
 
@@ -40,7 +40,7 @@ The SDK **requires** the native `synheart-flux` library for computing all behavi
 2. Extract and copy the framework into your project's `Frameworks/` directory
 3. Add it as a framework dependency to your app target in Xcode
 
-**Note**: The SDK requires synheart-flux version 0.1.1 or later.
+**Note**: The SDK requires synheart-flux version 0.1.1 or later. For **clipboard_activity_rate** and **correction_rate** in the typing summary, use synheart-flux **0.3.0** or later.
 
 For full details (usage, troubleshooting, building from source), see [`SYNHEART_FLUX_INTEGRATION.md`](SYNHEART_FLUX_INTEGRATION.md).
 
@@ -134,13 +134,20 @@ print("App switches per minute: \(stats.appSwitchesPerMinute)")
 The SDK collects six types of behavioral events:
 
 - **Scroll**: Velocity, acceleration, direction, direction reversals (for scroll jitter calculation)
-- **Tap**: Duration, long-press detection
+- **Tap**: Duration, long-press detection. **Taps are not counted while the keyboard is open** (when a text field or text view is first responder), so typing interaction is not double-counted as tap events.
 - **Swipe**: Direction, distance, velocity, acceleration
 - **Notification**: Received, opened, ignored (requires permission)
 - **Call**: Answered, ignored, dismissed (requires permission)
-- **Typing**: Comprehensive typing session metrics including speed, cadence, burstiness, and deep typing detection
+- **Typing**: Comprehensive typing session metrics: speed, cadence, burstiness, cadence variability, gap ratio, activity ratio, interaction intensity, deep typing, **backspace/copy/paste/cut counts**. Flux uses these to compute **clipboard_activity_rate** and **correction_rate** in the typing summary (synheart-flux 0.3.0+).
 
 **Note**: App switch events are tracked internally and sent to Flux for task switch calculations, but are not displayed as one of the six event types in event streams or UI. App switch count is available in session summaries.
+
+### Typing: clipboard and correction rates
+
+To get non-zero **clipboard_activity_rate** and **correction_rate** in the session typing summary (from Flux):
+
+- **Backspace/correction**: The SDK infers deletions from text length decrease. **Cut** is not counted as backspace (only actual backspace/delete taps are).
+- **Copy/paste/cut**: The SDK does not observe the system clipboard. Call `behavior.recordCopy()`, `behavior.recordPaste()`, or `behavior.recordCut()` when the user performs those actions—e.g. from a custom `UITextField`/`UITextView` that overrides `copy(_:)`, `paste(_:)`, and `cut(_:)`. The Example app uses `BehaviorTrackingTextField` for this; you can use that class or wire the same calls in your own text input.
 
 ## Privacy & Compliance
 
@@ -167,9 +174,13 @@ The SDK collects six types of behavioral events:
 - iOS 12.0+
 - Swift 5.0+
 - Xcode 12.0+
-- **synheart-flux** 0.1.1+ (required for HSI metrics computation)
+- **synheart-flux** 0.1.1+ (required for HSI metrics); 0.3.0+ for typing `clipboard_activity_rate` and `correction_rate`
 
 ## Breaking Changes
+
+### Version 0.3.0
+
+- **Clipboard and correction rates**: Typing summary from Flux includes `clipboard_activity_rate` and `correction_rate` (synheart-flux 0.3.0+). Use `recordCopy()`/`recordPaste()`/`recordCut()` for clipboard counts; cut is not counted as backspace. Taps are not counted when the keyboard is open.
 
 ### Version 0.1.0
 
@@ -184,8 +195,9 @@ The example app includes:
 
 - Real-time event visualization
 - Session management UI
+- **BehaviorTrackingTextField** for typing and clipboard (copy/paste/cut) testing
 - Time range selection for on-demand metrics
-- Comprehensive session results display
+- Comprehensive session results display (including typing clipboard/correction rates)
 - HSI JSON output viewing
 
 ## API Reference

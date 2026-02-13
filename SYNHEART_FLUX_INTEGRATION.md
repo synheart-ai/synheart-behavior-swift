@@ -12,7 +12,7 @@ The SynheartBehavior SDK **requires** synheart-flux (Rust library) for computing
 - Scroll jitter rate
 - Deep focus blocks
 - Interaction intensity
-- Typing session summary
+- **Typing session summary** (session count, average speed, cadence, **clipboard_activity_rate**, **correction_rate**, etc.; requires synheart-flux **0.3.0+** for the two rates)
 - Rolling baselines across sessions
 
 **Flux is now required** - the SDK will fail to initialize if Flux libraries are not available.
@@ -164,6 +164,20 @@ if let hsiJson = FluxBridge.shared.behaviorToHsi(sessionJson) {
     }
 }
 ```
+
+## Typing summary from Flux
+
+When you end a session with `endSessionWithHsi(sessionId:)`, Flux computes the **typing session summary** from the events the SDK sent. The SDK includes in each typing event:
+
+- `typing_tap_count`, `typing_speed`, `mean_inter_tap_interval_ms`, `typing_cadence_variability`, `typing_cadence_stability`, gap/burstiness/activity/intensity metrics, `duration`, `start_at`, `end_at`, `deep_typing`
+- **Correction/clipboard counts**: `number_of_backspace`, `number_of_delete` (0 on iOS), `number_of_copy`, `number_of_paste`, `number_of_cut`
+
+Flux (v0.3.0+) uses those counts to compute:
+
+- **clipboard_activity_rate** = (copy + paste + cut) / (typing_tap_count + copy + paste + cut)
+- **correction_rate** = (backspace + delete) / (typing_tap_count + backspace + delete)
+
+These appear in the HSI `meta` section and in `extractMetricsDictionary(from:hsiJson:)` under `typing_session_summary`. To get non-zero copy/paste/cut counts, your app must call `behavior.recordCopy()`, `behavior.recordPaste()`, and `behavior.recordCut()` when the user performs those actions (e.g. from a custom text field that overrides `copy(_:)`/`paste(_:)`/`cut(_:)`). Cut removals are not counted as backspace.
 
 ## Building from Source
 

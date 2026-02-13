@@ -21,7 +21,7 @@ class MainViewController: UIViewController {
     private let statsContentStack = UIStackView()
     private let typingTestCard = UIView()
     private let typingTestTitleLabel = UILabel()
-    private let textField = UITextField()
+    private let textField = BehaviorTrackingTextField()
     private let typingTestHintLabel = UILabel()
     private let testItemsStack = UIStackView()
     
@@ -39,6 +39,8 @@ class MainViewController: UIViewController {
                 self?.eventCount += 1
             }
         }
+        // Wire text field so copy/paste/cut are reported to the SDK (clipboard_activity_rate)
+        textField.behavior = behavior
     }
     
     private func setupKeyboardDismissal() {
@@ -244,7 +246,7 @@ class MainViewController: UIViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         typingTestCard.addSubview(textField)
         
-        typingTestHintLabel.text = "Typing events will appear in the event stream above"
+        typingTestHintLabel.text = "Type here to test typing events. Use Copy/Paste/Cut (long-press or Edit menu) to test clipboard counts."
         typingTestHintLabel.font = .systemFont(ofSize: 12)
         if #available(iOS 13.0, *) {
             typingTestHintLabel.textColor = .secondaryLabel

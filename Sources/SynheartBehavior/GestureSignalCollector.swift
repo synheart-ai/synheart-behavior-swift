@@ -109,6 +109,11 @@ internal class GestureSignalCollector: NSObject {
             return
         }
 
+        // Don't count taps while keyboard is open (user is typing; taps are part of typing, not UI taps)
+        if isTextInputFirstResponder() {
+            return
+        }
+
         // Check if this tap occurred on a scroll view - if so, it's likely a scroll, not a tap
         var currentView: UIView? = view
         while let checkView = currentView {
@@ -135,6 +140,10 @@ internal class GestureSignalCollector: NSObject {
     @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
         guard recognizer.state == .began else { return }
         guard let sessionId = sessionManager?.getCurrentSessionId() else {
+            return
+        }
+        // Don't count long press while keyboard is open (same as tap)
+        if isTextInputFirstResponder() {
             return
         }
 
@@ -296,6 +305,46 @@ internal class GestureSignalCollector: NSObject {
 
     private func currentTimestampMs() -> Int64 {
         return Int64(Date().timeIntervalSince1970 * 1000)
+    }
+
+    /// True when the current first responder is a text field or text view (keyboard open).
+    /// Taps/long presses are not counted in that case so they aren't double-counted as tap events.
+    private func isTextInputFirstResponder() -> Bool {
+        guard let window = Self.keyWindow() else { return false }
+        guard let firstResponder = window.findFirstResponder() else { return false }
+        return firstResponder is UITextField || firstResponder is UITextView
+    }
+}
+
+// MARK: - Key window and first responder (keyboard-open check)
+private extension GestureSignalCollector {
+    static func keyWindow() -> UIWindow? {
+        if #available(iOS 13.0, *) {
+            return UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first { $0.isKeyWindow }
+        } else {
+            return UIApplication.shared.keyWindow
+        }
+    }
+}
+
+private extension UIWindow {
+    func findFirstResponder() -> UIView? {
+        if let r = rootViewController?.view?.findFirstResponderInHierarchy() { return r }
+        if let presented = rootViewController?.presentedViewController?.view?.findFirstResponderInHierarchy() { return presented }
+        return nil
+    }
+}
+
+private extension UIView {
+    func findFirstResponderInHierarchy() -> UIView? {
+        if isFirstResponder { return self }
+        for subview in subviews {
+            if let r = subview.findFirstResponderInHierarchy() { return r }
+        }
+        return nil
     }
 }
 

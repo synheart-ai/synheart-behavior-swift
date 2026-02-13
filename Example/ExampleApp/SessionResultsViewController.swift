@@ -450,6 +450,12 @@ class SessionResultsViewController: UIViewController {
         if let fragmentation = typingSummary["typing_fragmentation"] as? Double {
             stack.addArrangedSubview(createInfoRow(label: "Typing Fragmentation", value: String(format: "%.3f", fragmentation)))
         }
+        if let clipboardRate = typingSummary["clipboard_activity_rate"] as? Double {
+            stack.addArrangedSubview(createInfoRow(label: "Clipboard Activity Rate", value: String(format: "%.3f", clipboardRate)))
+        }
+        if let correctionRate = typingSummary["correction_rate"] as? Double {
+            stack.addArrangedSubview(createInfoRow(label: "Correction Rate", value: String(format: "%.3f", correctionRate)))
+        }
         
         // Individual typing sessions (if available)
         if let individualSessions = typingSummary["individual_typing_sessions"] as? [[String: Any]], !individualSessions.isEmpty {
@@ -586,6 +592,8 @@ class SessionResultsViewController: UIViewController {
         typingSummary["typing_contribution_to_interaction_intensity"] = meta["typing_contribution_to_interaction_intensity"] as? Double ?? 0.0
         typingSummary["deep_typing_blocks"] = meta["deep_typing_blocks"] as? Int ?? 0
         typingSummary["typing_fragmentation"] = meta["typing_fragmentation"] as? Double ?? 0.0
+        typingSummary["clipboard_activity_rate"] = meta["clipboard_activity_rate"] as? Double ?? 0.0
+        typingSummary["correction_rate"] = meta["correction_rate"] as? Double ?? 0.0
         
         // Extract individual typing sessions from typing_metrics array
         if let typingMetrics = meta["typing_metrics"] as? [[String: Any]] {
@@ -925,27 +933,9 @@ class SessionResultsViewController: UIViewController {
                         "direction": event.payload["direction"] ?? "unknown"
                     ]
                 case .typingCadence, .typingBurst:
-                    var typing: [String: Any] = [:]
-                    if let tapCount = event.payload["typing_tap_count"] {
-                        typing["typing_tap_count"] = tapCount
-                    }
-                    if let speed = event.payload["typing_speed"] {
-                        typing["typing_speed"] = speed
-                    }
-                    if let meanInterval = event.payload["mean_inter_tap_interval_ms"] {
-                        typing["mean_inter_tap_interval_ms"] = meanInterval
-                    }
-                    if let burstiness = event.payload["typing_burstiness"] {
-                        typing["typing_burstiness"] = burstiness
-                    }
-                    if let startAt = event.payload["start_at"] {
-                        typing["start_at"] = startAt
-                    }
-                    if let endAt = event.payload["end_at"] {
-                        typing["end_at"] = endAt
-                    }
-                    if !typing.isEmpty {
-                        eventDict["typing"] = typing
+                    // Use full typing payload so all metrics show in the event card (aligned with Kotlin/Dart)
+                    if !event.payload.isEmpty {
+                        eventDict["typing"] = event.payload
                     }
                 // Note: appSwitch events are filtered out earlier (not shown in timeline, but still counted)
                 default:
