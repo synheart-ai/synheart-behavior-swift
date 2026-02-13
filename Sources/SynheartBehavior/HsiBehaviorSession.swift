@@ -400,7 +400,7 @@ public func parseHsiJsonManually(_ hsiJson: String, sessionId: String? = nil, st
     let producerJson = hsi["producer"] as? [String: Any]
     let producer = HsiProducer(
         name: producerJson?["name"] as? String ?? "synheart-flux",
-        version: producerJson?["version"] as? String ?? "0.3.0",
+        version: producerJson?["version"] as? String ?? "0.2.0",
         instanceId: producerJson?["instance_id"] as? String ?? ""
     )
     

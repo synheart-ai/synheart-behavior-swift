@@ -21,14 +21,14 @@ Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "0.3.0")
+    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "0.2.0")
 ]
 ```
 
 Or add via Xcode:
 1. File → Add Packages...
 2. Enter: `https://github.com/synheart-ai/synheart-behavior-ios.git`
-3. Select version: `0.3.0`
+3. Select version: `0.2.0`
 
 **📖 New to the SDK?** See [INTEGRATION.md](INTEGRATION.md) for a quick start guide.
 
@@ -178,7 +178,7 @@ To get non-zero **clipboard_activity_rate** and **correction_rate** in the sessi
 
 ## Breaking Changes
 
-### Version 0.3.0
+### Version 0.2.0
 
 - **Clipboard and correction rates**: Typing summary from Flux includes `clipboard_activity_rate` and `correction_rate` (synheart-flux 0.3.0+). Use `recordCopy()`/`recordPaste()`/`recordCut()` for clipboard counts; cut is not counted as backspace. Taps are not counted when the keyboard is open.
 

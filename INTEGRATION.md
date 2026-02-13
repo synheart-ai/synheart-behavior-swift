@@ -7,12 +7,12 @@ A simple guide to integrate Synheart Behavioral SDK into your iOS app.
 ### Via Xcode
 1. File → Add Packages...
 2. Enter: `https://github.com/synheart-ai/synheart-behavior-ios.git`
-3. Select version: `0.3.0`
+3. Select version: `0.2.0`
 
 ### Via Package.swift
 ```swift
 dependencies: [
-    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "0.3.0")
+    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "0.2.0")
 ]
 ```
 
