@@ -1,7 +1,7 @@
 import Foundation
+
 #if canImport(UIKit)
 import UIKit
-#endif
 
 /// Collects input interaction signals including keystroke timing and burst detection.
 internal class InputSignalCollector {
@@ -112,12 +112,11 @@ internal class InputSignalCollector {
     private func emitTypingCadenceEvent(sessionId: String, cadence: Double, interKeyLatency: Double) {
         let event = BehaviorEvent(
             sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .typingCadence,
+            type: .typing,
             payload: [
-                "cadence": cadence,
-                "inter_key_latency_ms": interKeyLatency,
-                "burst_length": currentBurstLength
+                "typing_speed": cadence,
+                "mean_inter_tap_interval_ms": interKeyLatency,
+                "typing_tap_count": currentBurstLength
             ]
         )
         sdk?.emitEvent(event)
@@ -126,10 +125,9 @@ internal class InputSignalCollector {
     private func emitBurstEvent(sessionId: String, burstLength: Int) {
         let event = BehaviorEvent(
             sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .typingBurst,
+            type: .typing,
             payload: [
-                "burst_length": burstLength
+                "typing_tap_count": burstLength
             ]
         )
         sdk?.emitEvent(event)
@@ -148,3 +146,19 @@ internal class InputSignalCollector {
         return Int64(Date().timeIntervalSince1970 * 1000)
     }
 }
+
+#else
+
+/// No-op fallback for platforms without UIKit (e.g. macOS SwiftPM tests).
+internal class InputSignalCollector {
+    init(sdk: SynheartBehavior, sessionManager: SessionManager) {}
+
+    func start() {}
+    func stop() {}
+
+    func getCurrentStats() -> (cadence: Double?, interKeyLatency: Double?, burstLength: Int?) {
+        (nil, nil, nil)
+    }
+}
+
+#endif

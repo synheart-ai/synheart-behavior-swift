@@ -1,7 +1,7 @@
 import Foundation
+
 #if canImport(UIKit)
 import UIKit
-#endif
 
 /// Collects gesture activity signals including tap rate, long press, and drag velocity.
 internal class GestureSignalCollector: NSObject {
@@ -183,8 +183,7 @@ internal class GestureSignalCollector: NSObject {
     private func emitTapRateEvent(sessionId: String, tapRate: Double) {
         let event = BehaviorEvent(
             sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .tapRate,
+            type: .tap,
             payload: [
                 "rate": tapRate,
                 "count": tapTimes.count
@@ -196,11 +195,11 @@ internal class GestureSignalCollector: NSObject {
     private func emitLongPressRateEvent(sessionId: String, rate: Double) {
         let event = BehaviorEvent(
             sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .longPressRate,
+            type: .tap,
             payload: [
                 "rate": rate,
-                "count": longPressTimes.count
+                "count": longPressTimes.count,
+                "long_press": true
             ]
         )
         sdk?.emitEvent(event)
@@ -209,8 +208,7 @@ internal class GestureSignalCollector: NSObject {
     private func emitDragVelocityEvent(sessionId: String, velocity: Double) {
         let event = BehaviorEvent(
             sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .dragVelocity,
+            type: .swipe,
             payload: [
                 "velocity": velocity
             ]
@@ -240,3 +238,19 @@ extension GestureSignalCollector: UIGestureRecognizerDelegate {
         return true
     }
 }
+
+#else
+
+/// No-op fallback for platforms without UIKit (e.g. macOS SwiftPM tests).
+internal class GestureSignalCollector: NSObject {
+    init(sdk: SynheartBehavior, sessionManager: SessionManager) {
+        super.init()
+    }
+
+    func start() {}
+    func stop() {}
+
+    func getCurrentStats() -> Double { 0.0 }
+}
+
+#endif

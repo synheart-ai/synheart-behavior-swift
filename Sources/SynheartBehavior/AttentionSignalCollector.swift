@@ -1,7 +1,7 @@
 import Foundation
+
 #if canImport(UIKit)
 import UIKit
-#endif
 
 /// Collects attention and multitasking signals including app switching, idle gaps, and session stability.
 internal class AttentionSignalCollector {
@@ -185,11 +185,10 @@ internal class AttentionSignalCollector {
     }
 
     private func emitAppSwitchEvent(sessionId: String, backgroundDuration: Int64, switchCount: Int) {
-        let event = BehaviorEvent(
+        let event = BehaviorEvent.appSwitch(
             sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .appSwitch,
-            payload: [
+            action: "switch",
+            metrics: [
                 "background_duration_ms": backgroundDuration,
                 "switch_count": switchCount,
                 "switches_per_minute": Double(switchCount) / (Double(appSwitchWindowMs) / 60000.0)
@@ -199,11 +198,10 @@ internal class AttentionSignalCollector {
     }
 
     private func emitForegroundDurationEvent(sessionId: String, duration: Int64) {
-        let event = BehaviorEvent(
+        let event = BehaviorEvent.appSwitch(
             sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .foregroundDuration,
-            payload: [
+            action: "foreground_duration",
+            metrics: [
                 "duration_ms": duration,
                 "duration_seconds": Double(duration) / 1000.0
             ]
@@ -213,22 +211,21 @@ internal class AttentionSignalCollector {
 
     private func emitIdleGapEvent(sessionId: String, idleGapSeconds: Double) {
         // Classify idle gap type
-        var eventType: BehaviorEventType = .idleGap
-
+        let idleType: String
         if idleGapSeconds < 3 {
-            eventType = .microIdle
+            idleType = "micro"
         } else if idleGapSeconds < 10 {
-            eventType = .midIdle
+            idleType = "mid"
         } else {
-            eventType = .taskDropIdle
+            idleType = "task_drop"
         }
 
-        let event = BehaviorEvent(
+        let event = BehaviorEvent.appSwitch(
             sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: eventType,
-            payload: [
-                "idle_gap_seconds": idleGapSeconds
+            action: "idle_gap",
+            metrics: [
+                "idle_gap_seconds": idleGapSeconds,
+                "idle_type": idleType
             ]
         )
         sdk?.emitEvent(event)
@@ -247,11 +244,10 @@ internal class AttentionSignalCollector {
         // Fragmentation index: normalized fragmentation count
         let fragmentationIndex = min(1.0, Double(fragmentationCount) / 10.0)
 
-        let event = BehaviorEvent(
+        let event = BehaviorEvent.appSwitch(
             sessionId: sessionId,
-            timestamp: currentTime,
-            type: .sessionStability,
-            payload: [
+            action: "session_stability",
+            metrics: [
                 "stability_index": stabilityIndex,
                 "fragmentation_index": fragmentationIndex,
                 "total_foreground_duration_ms": totalForegroundDuration,
@@ -293,3 +289,27 @@ internal class AttentionSignalCollector {
         return Int64(Date().timeIntervalSince1970 * 1000)
     }
 }
+
+#else
+
+/// No-op fallback for platforms without UIKit (e.g. macOS SwiftPM tests).
+internal class AttentionSignalCollector {
+    init(sdk: SynheartBehavior, sessionManager: SessionManager, maxIdleGapSeconds: Double) {}
+
+    func start() {}
+    func stop() {}
+
+    func markActivity() {}
+    func emitSessionStability(sessionId: String) {}
+    func resetSessionTracking() {}
+
+    func getCurrentStats() -> (
+        appSwitchesPerMinute: Int,
+        foregroundDuration: Double?,
+        idleGapSeconds: Double?
+    ) {
+        (0, nil, nil)
+    }
+}
+
+#endif

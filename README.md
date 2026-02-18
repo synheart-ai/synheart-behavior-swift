@@ -1,5 +1,10 @@
 # Synheart Behavioral SDK for iOS
 
+[![Swift](https://img.shields.io/badge/Swift-5.0%2B-orange?logo=swift)](https://swift.org)
+[![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift)](https://www.swift.org/package-manager/)
+[![Platform](https://img.shields.io/badge/platform-iOS%2012%2B-lightgrey)](https://developer.apple.com/ios/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 A lightweight, privacy-preserving iOS SDK that collects digital behavioral signals from smartphones. These signals represent biobehavioral markers strongly correlated with cognitive and emotional states, especially focus, stress, engagement, and fatigue.
 
 ## Features
@@ -37,7 +42,8 @@ import SynheartBehavior
 let config = BehaviorConfig(
     enableInputSignals: true,
     enableAttentionSignals: true,
-    enableMotionLite: false
+    enableMotionLite: false,
+    consentBehavior: true
 )
 
 let behavior = SynheartBehavior(config: config)
@@ -50,7 +56,12 @@ try behavior.initialize()
 behavior.setEventHandler { event in
     print("Event type: \(event.type)")
     print("Payload: \(event.payload)")
-    print("Timestamp: \(event.timestamp)")
+    print("Timestamp (ISO 8601): \(event.timestamp)")
+
+    // Attention/multitasking signals are emitted as `.appSwitch` with an `action` subtype.
+    if event.type == .appSwitch {
+        print("AppSwitch action: \(event.payload["action"] ?? "n/a")")
+    }
 }
 ```
 
@@ -100,7 +111,7 @@ print("Scroll velocity: \(stats.scrollVelocity ?? 0)")
 
 ## License
 
-MIT License
+Apache License 2.0. See [`LICENSE`](LICENSE).
 
 ## Author
 
