@@ -103,11 +103,28 @@ print("Scroll velocity: \(stats.scrollVelocity ?? 0)")
 - <1 ms processing latency
 - Zero background threads
 
+## Testing
+
+```bash
+swift build
+swift test
+```
+
+## Related Projects
+
+| Repository | Description |
+|---|---|
+| [synheart-behavior](https://github.com/synheart-ai/synheart-behavior) | Specification & docs (Source of Truth) |
+| [synheart-behavior-dart](https://github.com/synheart-ai/synheart-behavior-dart) | Flutter/Dart SDK |
+| [synheart-behavior-kotlin](https://github.com/synheart-ai/synheart-behavior-kotlin) | Android/Kotlin SDK |
+
+| [synheart-behavior-chrome](https://github.com/synheart-ai/synheart-behavior-chrome) | Chrome extension |
+
 ## Requirements
 
 - iOS 12.0+
-- Swift 5.0+
-- Xcode 12.0+
+- Swift 5.9+
+- Xcode 15.0+
 
 ## License
 
