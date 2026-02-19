@@ -1,7 +1,7 @@
 import Foundation
+
 #if canImport(UIKit)
 import UIKit
-#endif
 
 /// Collects input interaction signals including keystroke timing and typing session tracking.
 /// Tracks typing sessions from keyboard open (focus gain) to keyboard close (focus loss).
@@ -206,12 +206,7 @@ internal class InputSignalCollector {
             "number_of_paste": session.numberOfPaste,
             "number_of_cut": session.numberOfCut
         ]
-        let event = BehaviorEvent(
-            sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .typingCadence,
-            payload: payload
-        )
+        let event = BehaviorEvent(sessionId: sessionId, type: .typing, payload: payload)
         
         sdk?.emitEvent(event)
         currentTypingSession = nil
@@ -331,3 +326,24 @@ internal class InputSignalCollector {
         return Int64(Date().timeIntervalSince1970 * 1000)
     }
 }
+
+#else
+
+/// No-op fallback for platforms without UIKit (e.g. macOS SwiftPM tests).
+internal class InputSignalCollector {
+    init(sdk: SynheartBehavior, sessionManager: SessionManager) {}
+
+    func start() {}
+    func stop() {}
+
+    func endActiveTypingSession() {}
+    func recordCopy() {}
+    func recordPaste() {}
+    func recordCut() {}
+
+    func getCurrentStats() -> (cadence: Double?, interKeyLatency: Double?, burstLength: Int?) {
+        (nil, nil, nil)
+    }
+}
+
+#endif

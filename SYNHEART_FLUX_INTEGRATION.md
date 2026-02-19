@@ -34,25 +34,14 @@ Download `synheart-flux-ios-xcframework.zip` from the [synheart-flux releases](h
 
 Extract the zip and place the XCFramework in your project:
 
-**Option A: For apps using SynheartBehavior via SPM**
-
-1. Add `SynheartFlux.xcframework` to your app target (not the package)
+1. Add `SynheartFlux.xcframework` to your **app target** (not the SDK package)
 2. In Xcode: Target > General > Frameworks, Libraries, and Embedded Content
-3. Add the XCFramework and set to "Embed & Sign"
+3. Add the XCFramework and set to "Do Not Embed" (static library)
+4. Configure linker flags — see [INTEGRATION.md](INTEGRATION.md) for details
 
-**Option B: For direct integration**
-
-Place the XCFramework in the Frameworks directory:
-```
-SynheartBehavior/
-├── Frameworks/
-│   └── SynheartFlux.xcframework/
-│       ├── ios-arm64/
-│       ├── ios-arm64_x86_64-simulator/
-│       └── Info.plist
-└── Sources/
-    └── SynheartBehavior/
-```
+> **Note**: The XCFramework must not be committed into this repository.
+> Behavior repos must not bundle or vendor Flux binaries (see AGENTS.md Global Hard Rule #8).
+> Users download it separately from synheart-flux releases.
 
 ### Step 3: Verify Integration
 

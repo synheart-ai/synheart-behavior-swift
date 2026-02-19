@@ -23,19 +23,30 @@ public final class FluxBridge {
     private var initialized = false
 
     private init() {
+        #if canImport(UIKit)
         initialized = checkRustLibraryAvailable()
+        #else
+        // synheart-flux is integrated on iOS via an external XCFramework.
+        // SwiftPM macOS builds (e.g. CI `swift test`) must not link against iOS-only symbols.
+        initialized = false
+        #endif
     }
 
     private func checkRustLibraryAvailable() -> Bool {
+        #if canImport(UIKit)
         // For static libraries, we can't use dlsym to check availability
         // Instead, we'll try to call a simple function to see if it's linked
         // If the symbol is not linked, this will cause a linker error at build time
         // At runtime, if the function returns a valid result or doesn't crash, the library is available
         // We use a test call to flux_version() which is always available and safe
         return testFluxAvailability()
+        #else
+        return false
+        #endif
     }
     
     private func testFluxAvailability() -> Bool {
+        #if canImport(UIKit)
         // Try to get the version string - if this works, the library is linked
         // For static libraries, if not linked, this will cause a linker error at build time
         // At runtime, if we get here, the library should be available
@@ -44,6 +55,9 @@ public final class FluxBridge {
             return !version.isEmpty
         }
         return false
+        #else
+        return false
+        #endif
     }
 
     /// Check if synheart-flux is available.
@@ -59,6 +73,7 @@ public final class FluxBridge {
     ///   in synheart-flux format
     /// - Returns: HSI JSON string, or nil if computation failed
     public func behaviorToHsi(_ sessionJson: String) -> String? {
+        #if canImport(UIKit)
         guard initialized else {
             return nil
         }
@@ -74,6 +89,10 @@ public final class FluxBridge {
         let result = String(cString: resultPtr)
         flux_free_string(resultPtr)
         return result
+        #else
+        _ = sessionJson
+        return nil
+        #endif
     }
 
     // MARK: - Stateful Processor API
@@ -83,16 +102,25 @@ public final class FluxBridge {
     /// - Parameter baselineWindowSessions: Number of sessions in the rolling baseline (default: 20)
     /// - Returns: Processor handle, or nil if creation failed
     public func createProcessor(baselineWindowSessions: Int = 20) -> OpaquePointer? {
+        #if canImport(UIKit)
         guard initialized else { return nil }
         return flux_behavior_processor_new(Int32(baselineWindowSessions))
+        #else
+        _ = baselineWindowSessions
+        return nil
+        #endif
     }
 
     /// Free a processor created with createProcessor.
     ///
     /// - Parameter handle: Processor handle to free
     public func freeProcessor(_ handle: OpaquePointer) {
+        #if canImport(UIKit)
         guard initialized else { return }
         flux_behavior_processor_free(handle)
+        #else
+        _ = handle
+        #endif
     }
 
     /// Process a behavioral session with the stateful processor.
@@ -104,6 +132,7 @@ public final class FluxBridge {
     ///   - sessionJson: JSON string containing the behavioral session data
     /// - Returns: HSI JSON string, or nil if computation failed
     public func processSession(_ handle: OpaquePointer, sessionJson: String) -> String? {
+        #if canImport(UIKit)
         guard initialized else { return nil }
 
         guard let jsonCString = sessionJson.cString(using: .utf8) else {
@@ -117,6 +146,11 @@ public final class FluxBridge {
         let result = String(cString: resultPtr)
         flux_free_string(resultPtr)
         return result
+        #else
+        _ = handle
+        _ = sessionJson
+        return nil
+        #endif
     }
 
     /// Save baselines from a processor to JSON for persistence.
@@ -124,6 +158,7 @@ public final class FluxBridge {
     /// - Parameter handle: Processor handle
     /// - Returns: JSON string containing baseline data, or nil if failed
     public func saveBaselines(_ handle: OpaquePointer) -> String? {
+        #if canImport(UIKit)
         guard initialized else { return nil }
 
         guard let resultPtr = flux_behavior_processor_save_baselines(handle) else {
@@ -133,6 +168,10 @@ public final class FluxBridge {
         let result = String(cString: resultPtr)
         flux_free_string(resultPtr)
         return result
+        #else
+        _ = handle
+        return nil
+        #endif
     }
 
     /// Load baselines into a processor from JSON.
@@ -142,6 +181,7 @@ public final class FluxBridge {
     ///   - baselinesJson: JSON string containing baseline data
     /// - Returns: true if loading succeeded, false otherwise
     public func loadBaselines(_ handle: OpaquePointer, baselinesJson: String) -> Bool {
+        #if canImport(UIKit)
         guard initialized else { return false }
 
         guard let jsonCString = baselinesJson.cString(using: .utf8) else {
@@ -149,6 +189,11 @@ public final class FluxBridge {
         }
 
         return flux_behavior_processor_load_baselines(handle, jsonCString) == 0
+        #else
+        _ = handle
+        _ = baselinesJson
+        return false
+        #endif
     }
 }
 
@@ -158,6 +203,7 @@ public final class FluxBridge {
 // For static libraries, symbols must be linked at compile time.
 // The app target must link against the XCFramework for these to be available.
 
+#if canImport(UIKit)
 @_silgen_name("flux_behavior_to_hsi")
 private func flux_behavior_to_hsi(_ json: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
@@ -184,6 +230,7 @@ private func flux_version() -> UnsafePointer<CChar>?
 
 @_silgen_name("flux_last_error")
 private func flux_last_error() -> UnsafePointer<CChar>?
+#endif
 
 // MARK: - Stateful Processor Wrapper
 

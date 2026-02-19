@@ -1,7 +1,7 @@
 import Foundation
+
 #if canImport(UIKit)
 import UIKit
-#endif
 
 /// Collects scroll dynamics signals including velocity, acceleration, and jitter.
 internal class ScrollSignalCollector: NSObject {
@@ -288,8 +288,7 @@ extension ScrollSignalCollector: UIScrollViewDelegate {
     private func emitScrollEvent(sessionId: String, velocity: Double, acceleration: Double, direction: String, directionReversal: Bool) {
         let event = BehaviorEvent(
             sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .scrollVelocity,
+            type: .scroll,
             payload: [
                 "velocity": velocity,
                 "acceleration": acceleration,
@@ -300,3 +299,21 @@ extension ScrollSignalCollector: UIScrollViewDelegate {
         sdk?.emitEvent(event)
     }
 }
+
+#else
+
+/// No-op fallback for platforms without UIKit (e.g. macOS SwiftPM tests).
+internal class ScrollSignalCollector: NSObject {
+    init(sdk: SynheartBehavior, sessionManager: SessionManager) {
+        super.init()
+    }
+
+    func start() {}
+    func stop() {}
+
+    func getCurrentStats() -> (velocity: Double?, acceleration: Double?, jitter: Double?) {
+        (nil, nil, nil)
+    }
+}
+
+#endif

@@ -33,7 +33,8 @@ final class SynheartBehaviorTests: XCTestCase {
             enableMotionLite: false,
             sessionIdPrefix: "TEST",
             eventBatchSize: 20,
-            maxIdleGapSeconds: 15.0
+            maxIdleGapSeconds: 15.0,
+            consentBehavior: true
         )
         sdk = SynheartBehavior(config: config)
         XCTAssertNoThrow(try sdk.initialize())
@@ -115,18 +116,13 @@ final class SynheartBehaviorTests: XCTestCase {
 
         let sessionId = try sdk.startSession()
 
-        // Simulate an event (in real app, this would come from user interaction)
-        let testEvent = BehaviorEvent(
-            sessionId: sessionId,
-            timestamp: Int64(Date().timeIntervalSince1970 * 1000),
-            type: .typingCadence,
-            payload: ["cadence": 5.0]
-        )
-        sdk.emitEvent(testEvent)
+        // Simulate an event using factory method
+        let testEvent = BehaviorEvent.typing(sessionId: sessionId, typingSpeed: 5.0)
+        sdk.sendEvent(testEvent)
 
         wait(for: [expectation], timeout: 1.0)
         XCTAssertNotNil(receivedEvent)
-        XCTAssertEqual(receivedEvent?.type, .typingCadence)
+        XCTAssertEqual(receivedEvent?.type, .typing)
     }
 
     func testBatchEventHandler() throws {
@@ -144,13 +140,8 @@ final class SynheartBehaviorTests: XCTestCase {
 
         // Emit enough events to trigger batch (default batch size is 10)
         for i in 0..<10 {
-            let event = BehaviorEvent(
-                sessionId: sessionId,
-                timestamp: Int64(Date().timeIntervalSince1970 * 1000),
-                type: .typingCadence,
-                payload: ["cadence": Double(i)]
-            )
-            sdk.emitEvent(event)
+            let event = BehaviorEvent.typing(sessionId: sessionId, typingSpeed: Double(i))
+            sdk.sendEvent(event)
         }
 
         wait(for: [expectation], timeout: 1.0)
@@ -216,6 +207,10 @@ final class SynheartBehaviorTests: XCTestCase {
         XCTAssertNil(config.sessionIdPrefix)
         XCTAssertEqual(config.eventBatchSize, 10)
         XCTAssertEqual(config.maxIdleGapSeconds, 10.0)
+        XCTAssertNil(config.userId)
+        XCTAssertNil(config.deviceId)
+        XCTAssertEqual(config.behaviorVersion, "1.0.0")
+        XCTAssertTrue(config.consentBehavior)
     }
 
     func testBehaviorConfigToDictionary() {
@@ -225,7 +220,11 @@ final class SynheartBehaviorTests: XCTestCase {
             enableMotionLite: true,
             sessionIdPrefix: "TEST",
             eventBatchSize: 20,
-            maxIdleGapSeconds: 15.0
+            maxIdleGapSeconds: 15.0,
+            userId: "user-123",
+            deviceId: "device-456",
+            behaviorVersion: "2.0.0",
+            consentBehavior: false
         )
 
         let dict = config.toDictionary()
@@ -236,38 +235,164 @@ final class SynheartBehaviorTests: XCTestCase {
         XCTAssertEqual(dict["sessionIdPrefix"] as? String, "TEST")
         XCTAssertEqual(dict["eventBatchSize"] as? Int, 20)
         XCTAssertEqual(dict["maxIdleGapSeconds"] as? Double, 15.0)
+        XCTAssertEqual(dict["userId"] as? String, "user-123")
+        XCTAssertEqual(dict["deviceId"] as? String, "device-456")
+        XCTAssertEqual(dict["behaviorVersion"] as? String, "2.0.0")
+        XCTAssertEqual(dict["consentBehavior"] as? Bool, false)
     }
 
     // MARK: - BehaviorEvent Tests
 
     func testBehaviorEventCreation() {
-        let event = BehaviorEvent(
+        let event = BehaviorEvent.typing(
             sessionId: "test-session",
-            timestamp: 123456789,
-            type: .typingCadence,
-            payload: ["cadence": 5.5, "inter_key_latency_ms": 100.0]
+            typingTapCount: 10,
+            typingSpeed: 5.5,
+            meanInterTapIntervalMs: 100.0
         )
 
         XCTAssertEqual(event.sessionId, "test-session")
-        XCTAssertEqual(event.timestamp, 123456789)
-        XCTAssertEqual(event.type, .typingCadence)
-        XCTAssertEqual(event.payload["cadence"] as? Double, 5.5)
+        XCTAssertFalse(event.timestamp.isEmpty)
+        XCTAssertEqual(event.type, .typing)
+        XCTAssertFalse(event.eventId.isEmpty)
+        XCTAssertEqual(event.payload["typing_speed"] as? Double, 5.5)
+        XCTAssertEqual(event.payload["typing_tap_count"] as? Int, 10)
     }
 
     func testBehaviorEventToDictionary() {
-        let event = BehaviorEvent(
+        let event = BehaviorEvent.scroll(
             sessionId: "test-session",
-            timestamp: 123456789,
-            type: .scrollVelocity,
-            payload: ["velocity": 150.0]
+            velocity: 150.0,
+            direction: "down"
         )
 
         let dict = event.toDictionary()
+        let eventDict = dict["event"] as? [String: Any]
 
-        XCTAssertEqual(dict["session_id"] as? String, "test-session")
-        XCTAssertEqual(dict["timestamp"] as? Int64, 123456789)
-        XCTAssertEqual(dict["type"] as? String, "scrollVelocity")
-        XCTAssertNotNil(dict["payload"])
+        XCTAssertNotNil(eventDict)
+        XCTAssertEqual(eventDict?["session_id"] as? String, "test-session")
+        XCTAssertFalse((eventDict?["timestamp"] as? String ?? "").isEmpty)
+        XCTAssertEqual(eventDict?["event_type"] as? String, "scroll")
+        XCTAssertNotNil(eventDict?["event_id"])
+        XCTAssertNotNil(eventDict?["metrics"])
+    }
+
+    func testBehaviorEventFactoryScroll() {
+        let event = BehaviorEvent.scroll(
+            sessionId: "s1",
+            velocity: 120.5,
+            acceleration: 10.0,
+            direction: "up",
+            directionReversal: true
+        )
+
+        XCTAssertEqual(event.type, .scroll)
+        XCTAssertEqual(event.payload["velocity"] as? Double, 120.5)
+        XCTAssertEqual(event.payload["acceleration"] as? Double, 10.0)
+        XCTAssertEqual(event.payload["direction"] as? String, "up")
+        XCTAssertEqual(event.payload["direction_reversal"] as? Bool, true)
+    }
+
+    func testBehaviorEventFactoryTap() {
+        let event = BehaviorEvent.tap(
+            sessionId: "s1",
+            tapDurationMs: 85,
+            longPress: false
+        )
+
+        XCTAssertEqual(event.type, .tap)
+        XCTAssertEqual(event.payload["tap_duration_ms"] as? Double, 85)
+        XCTAssertEqual(event.payload["long_press"] as? Bool, false)
+    }
+
+    func testBehaviorEventFactorySwipe() {
+        let event = BehaviorEvent.swipe(
+            sessionId: "s1",
+            direction: "left",
+            distancePx: 200.0,
+            velocity: 500.0
+        )
+
+        XCTAssertEqual(event.type, .swipe)
+        XCTAssertEqual(event.payload["direction"] as? String, "left")
+        XCTAssertEqual(event.payload["distance_px"] as? Double, 200.0)
+        XCTAssertEqual(event.payload["velocity"] as? Double, 500.0)
+    }
+
+    func testBehaviorEventFactoryNotification() {
+        let event = BehaviorEvent.notification(sessionId: "s1", action: "ignored")
+
+        XCTAssertEqual(event.type, .notification)
+        XCTAssertEqual(event.payload["action"] as? String, "ignored")
+    }
+
+    func testBehaviorEventFactoryCall() {
+        let event = BehaviorEvent.call(sessionId: "s1", action: "answered")
+
+        XCTAssertEqual(event.type, .call)
+        XCTAssertEqual(event.payload["action"] as? String, "answered")
+    }
+
+    func testBehaviorEventFactoryTyping() {
+        let event = BehaviorEvent.typing(
+            sessionId: "s1",
+            typingTapCount: 45,
+            typingSpeed: 3.2,
+            typingBurstiness: 0.6,
+            deepTyping: true
+        )
+
+        XCTAssertEqual(event.type, .typing)
+        XCTAssertEqual(event.payload["typing_tap_count"] as? Int, 45)
+        XCTAssertEqual(event.payload["typing_speed"] as? Double, 3.2)
+        XCTAssertEqual(event.payload["typing_burstiness"] as? Double, 0.6)
+        XCTAssertEqual(event.payload["deep_typing"] as? Bool, true)
+    }
+
+    func testBehaviorEventFactoryClipboard() {
+        let event = BehaviorEvent.clipboard(sessionId: "s1", action: "copy", context: "textField")
+
+        XCTAssertEqual(event.type, .clipboard)
+        XCTAssertEqual(event.payload["action"] as? String, "copy")
+        XCTAssertEqual(event.payload["context"] as? String, "textField")
+    }
+
+    func testBehaviorEventFactoryAppSwitch() {
+        let event = BehaviorEvent.appSwitch(sessionId: "s1")
+
+        XCTAssertEqual(event.type, .appSwitch)
+        XCTAssertTrue(event.payload.isEmpty)
+    }
+
+    func testBehaviorEventFactoryAppSwitchWithAction() {
+        let event = BehaviorEvent.appSwitch(
+            sessionId: "s1",
+            action: "session_stability",
+            metrics: [
+                "stability_index": 0.9
+            ]
+        )
+
+        XCTAssertEqual(event.type, .appSwitch)
+        XCTAssertEqual(event.payload["action"] as? String, "session_stability")
+        XCTAssertEqual(event.payload["stability_index"] as? Double, 0.9)
+    }
+
+    func testBehaviorEventTimestampIsISO8601() {
+        let event = BehaviorEvent.tap(sessionId: "s1")
+
+        // Verify the timestamp is a valid ISO 8601 string
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = formatter.date(from: event.timestamp)
+        XCTAssertNotNil(date, "Timestamp should be valid ISO 8601: \(event.timestamp)")
+    }
+
+    func testBehaviorEventIdIsUnique() {
+        let event1 = BehaviorEvent.tap(sessionId: "s1")
+        let event2 = BehaviorEvent.tap(sessionId: "s1")
+
+        XCTAssertNotEqual(event1.eventId, event2.eventId)
     }
 
     // MARK: - BehaviorSessionSummary Tests
@@ -283,7 +408,18 @@ final class SynheartBehaviorTests: XCTestCase {
             averageScrollVelocity: 120.0,
             appSwitchCount: 3,
             stabilityIndex: 0.85,
-            fragmentationIndex: 0.15
+            fragmentationIndex: 0.15,
+            behavioralMetrics: [
+                "interactionIntensity": 0.7,
+                "behavioralFocusHint": 0.8
+            ],
+            typingMetrics: [
+                "typingCadence": 5.5,
+                "typingBurstiness": 0.3
+            ],
+            deepFocusBlocks: [
+                ["startAt": "2025-01-01T00:00:00Z", "endAt": "2025-01-01T00:05:00Z", "durationMs": 300000]
+            ]
         )
 
         let dict = summary.toDictionary()
@@ -293,6 +429,26 @@ final class SynheartBehaviorTests: XCTestCase {
         XCTAssertEqual(dict["event_count"] as? Int, 42)
         XCTAssertEqual(dict["average_typing_cadence"] as? Double, 5.5)
         XCTAssertEqual(dict["app_switch_count"] as? Int, 3)
+        XCTAssertNotNil(dict["behavioral_metrics"])
+        XCTAssertNotNil(dict["typing_metrics"])
+        XCTAssertNotNil(dict["deep_focus_blocks"])
+
+        let behavioralMetrics = dict["behavioral_metrics"] as? [String: Any]
+        XCTAssertEqual(behavioralMetrics?["interactionIntensity"] as? Double, 0.7)
+        XCTAssertEqual(behavioralMetrics?["behavioralFocusHint"] as? Double, 0.8)
+    }
+
+    func testBehaviorSessionSummaryNewFieldsDefaults() {
+        let summary = BehaviorSessionSummary(
+            sessionId: "test",
+            startTimestamp: 0,
+            endTimestamp: 1000,
+            duration: 1000
+        )
+
+        XCTAssertNil(summary.behavioralMetrics)
+        XCTAssertNil(summary.typingMetrics)
+        XCTAssertNil(summary.deepFocusBlocks)
     }
 
     // MARK: - BehaviorStats Tests
@@ -324,16 +480,4 @@ final class SynheartBehaviorTests: XCTestCase {
     }
 }
 
-// MARK: - BehaviorError Equatable Extension for Testing
-extension BehaviorError: Equatable {
-    public static func == (lhs: BehaviorError, rhs: BehaviorError) -> Bool {
-        switch (lhs, rhs) {
-        case (.notInitialized, .notInitialized),
-             (.invalidConfiguration, .invalidConfiguration),
-             (.sessionNotFound, .sessionNotFound):
-            return true
-        default:
-            return false
-        }
-    }
-}
+ 

@@ -317,6 +317,11 @@ public class SynheartBehavior {
         return "\(prefix)-\(Int64(Date().timeIntervalSince1970 * 1000))"
     }
 
+    /// Send an event using factory methods (public API).
+    public func sendEvent(_ event: BehaviorEvent) {
+        emitEvent(event)
+    }
+
     /// Emit an event to registered handlers.
     internal func emitEvent(_ event: BehaviorEvent) {
         eventBatcher?.addEvent(event)
@@ -327,7 +332,7 @@ public class SynheartBehavior {
 }
 
 /// Errors that can be thrown by the SDK.
-public enum BehaviorError: Error {
+public enum BehaviorError: Error, Equatable {
     case notInitialized
     case invalidConfiguration
     case sessionNotFound
