@@ -1,0 +1,47 @@
+name: ExampleApp
+options:
+  bundleIdPrefix: ai.synheart.behavior
+  deploymentTarget:
+    iOS: "12.0"
+  developmentLanguage: en
+
+packages:
+  SynheartBehavior:
+    path: ../
+
+targets:
+  ExampleApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "12.0"
+    sources:
+      - path: ExampleApp
+    resources:
+      - path: ExampleApp/Resources
+    dependencies:
+      - package: SynheartBehavior
+    frameworks:
+      - path: ../Frameworks/SynheartFlux.xcframework
+        embed: false
+        codeSign: false
+        link: true
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: ai.synheart.behavior.example
+      INFOPLIST_FILE: ExampleApp/Info.plist
+      SWIFT_VERSION: "5.0"
+      CODE_SIGN_IDENTITY: "Apple Development"
+      DEVELOPMENT_TEAM: ""
+      SWIFT_OBJC_BRIDGING_HEADER: ""
+      OTHER_LDFLAGS:
+        [
+          "-L$(PROJECT_DIR)/../Frameworks/SynheartFlux.xcframework/ios-arm64_x86_64-simulator",
+          "-L$(PROJECT_DIR)/../Frameworks/SynheartFlux.xcframework/ios-arm64",
+          "-lsynheart_flux",
+        ]
+      ENABLE_HARDENED_RUNTIME: false
+      FRAMEWORK_SEARCH_PATHS: ["$(PROJECT_DIR)/../Frameworks"]
+    info:
+      path: ExampleApp/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true

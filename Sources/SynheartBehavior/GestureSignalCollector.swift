@@ -69,9 +69,13 @@ internal class GestureSignalCollector: NSObject {
         windows.add(window)
 
         // Tap gesture recognizer
+        // Set a small movement tolerance to avoid detecting taps during scrolling
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         tapRecognizer.cancelsTouchesInView = false
         tapRecognizer.delegate = self
+        // Allow small movement (10 points) to account for finger movement during tap
+        tapRecognizer.numberOfTapsRequired = 1
+        tapRecognizer.numberOfTouchesRequired = 1
         window.addGestureRecognizer(tapRecognizer)
 
         // Long press gesture recognizer
@@ -80,10 +84,13 @@ internal class GestureSignalCollector: NSObject {
         longPressRecognizer.delegate = self
         window.addGestureRecognizer(longPressRecognizer)
 
-        // Pan gesture recognizer for drag tracking
+        // Pan gesture recognizer for drag tracking (horizontal swipes only)
+        // Note: This should not interfere with scroll views which handle vertical scrolling
         let panRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         panRecognizer.cancelsTouchesInView = false
         panRecognizer.delegate = self
+        // Set minimum number of touches to 1 (default) and maximum to 1 (single finger swipes only)
+        panRecognizer.maximumNumberOfTouches = 1
         window.addGestureRecognizer(panRecognizer)
     }
 
@@ -97,8 +104,24 @@ internal class GestureSignalCollector: NSObject {
     }
 
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
-        guard let sessionId = sessionManager?.getCurrentSessionId() else {
+        guard let sessionId = sessionManager?.getCurrentSessionId(),
+              let view = recognizer.view else {
             return
+        }
+
+        // Don't count taps while keyboard is open (user is typing; taps are part of typing, not UI taps)
+        if isTextInputFirstResponder() {
+            return
+        }
+
+        // Check if this tap occurred on a scroll view - if so, it's likely a scroll, not a tap
+        var currentView: UIView? = view
+        while let checkView = currentView {
+            if checkView is UIScrollView {
+                // Don't record tap if it's on a scroll view (likely a scroll gesture)
+                return
+            }
+            currentView = checkView.superview
         }
 
         let currentTime = currentTimestampMs()
@@ -119,6 +142,10 @@ internal class GestureSignalCollector: NSObject {
         guard let sessionId = sessionManager?.getCurrentSessionId() else {
             return
         }
+        // Don't count long press while keyboard is open (same as tap)
+        if isTextInputFirstResponder() {
+            return
+        }
 
         let currentTime = currentTimestampMs()
         longPressTimes.append(currentTime)
@@ -133,40 +160,89 @@ internal class GestureSignalCollector: NSObject {
     }
 
     @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
-        guard let sessionId = sessionManager?.getCurrentSessionId() else {
+        guard let sessionId = sessionManager?.getCurrentSessionId(),
+              let view = recognizer.view else {
             return
         }
 
         let currentTime = currentTimestampMs()
-        let currentPoint = recognizer.location(in: recognizer.view)
+        let currentPoint = recognizer.location(in: view)
 
         switch recognizer.state {
         case .began:
-            dragStartTime = currentTime
-            dragStartPoint = currentPoint
-            dragLastPoint = currentPoint
-            dragLastTime = currentTime
-
-        case .changed:
-            let timeDelta = currentTime - dragLastTime
-            guard timeDelta > 0 else { return }
-
-            let distance = sqrt(pow(currentPoint.x - dragLastPoint.x, 2) + pow(currentPoint.y - dragLastPoint.y, 2))
-            let velocity = Double(distance) / (Double(timeDelta) / 1000.0)  // pixels per second
-
-            if velocity > 10 {  // Only emit if significant movement
-                emitDragVelocityEvent(sessionId: sessionId, velocity: velocity)
+            // Check if we're starting on a scroll view - if so, don't track as swipe
+            var currentView: UIView? = view
+            var isOnScrollView = false
+            while let checkView = currentView {
+                if checkView is UIScrollView {
+                    isOnScrollView = true
+                    break
+                }
+                currentView = checkView.superview
+            }
+            
+            // Only track if not on scroll view (scroll views handle their own gestures)
+            if !isOnScrollView {
+                dragStartTime = currentTime
+                dragStartPoint = currentPoint
+                dragLastPoint = currentPoint
+                dragLastTime = currentTime
             }
 
+        case .changed:
+            // Don't emit events during .changed - only track position
+            // Only track if we started tracking (not on scroll view)
+            guard dragStartTime > 0 else {
+                return
+            }
             dragLastPoint = currentPoint
             dragLastTime = currentTime
 
         case .ended, .cancelled:
+            // Only emit ONE swipe event when gesture ends
+            // Only process if we were tracking (not on scroll view)
+            guard dragStartTime > 0 else {
+                return
+            }
+            
             let totalDistance = sqrt(pow(currentPoint.x - dragStartPoint.x, 2) + pow(currentPoint.y - dragStartPoint.y, 2))
             let totalTime = currentTime - dragStartTime
-            let averageVelocity = totalTime > 0 ? Double(totalDistance) / (Double(totalTime) / 1000.0) : 0
-
-            emitDragVelocityEvent(sessionId: sessionId, velocity: averageVelocity)
+            
+            // Calculate movement deltas
+            let deltaX = currentPoint.x - dragStartPoint.x
+            let deltaY = currentPoint.y - dragStartPoint.y
+            
+            // Only treat as swipe if:
+            // 1. Significant movement (> 50px)
+            // 2. Sufficient duration (>= 100ms)
+            // 3. Primarily horizontal movement (horizontal movement > vertical movement)
+            // This prevents vertical scrolling from being detected as swipes
+            let isHorizontalSwipe = abs(deltaX) > abs(deltaY) && abs(deltaX) > 50.0 && totalTime >= 100
+            
+            if isHorizontalSwipe && totalTime > 0 {
+                // Use native velocity from UIPanGestureRecognizer
+                let nativeVelocity = recognizer.velocity(in: view)
+                let velocityX = nativeVelocity.x
+                let velocity = abs(velocityX) // Use horizontal velocity for horizontal swipes
+                
+                // Calculate acceleration
+                let durationSeconds = Double(totalTime) / 1000.0
+                let acceleration = durationSeconds > 0.05
+                    ? (2.0 * abs(deltaX)) / (durationSeconds * durationSeconds)
+                    : 0.0
+                
+                // Determine swipe direction (horizontal only)
+                let direction: String = deltaX > 0 ? "right" : "left"
+                
+                emitSwipeEvent(
+                    sessionId: sessionId,
+                    direction: direction,
+                    distancePx: abs(deltaX), // Use horizontal distance
+                    durationMs: Int(totalTime),
+                    velocity: velocity,
+                    acceleration: acceleration
+                )
+            }
 
         default:
             break
@@ -205,12 +281,16 @@ internal class GestureSignalCollector: NSObject {
         sdk?.emitEvent(event)
     }
 
-    private func emitDragVelocityEvent(sessionId: String, velocity: Double) {
+    private func emitSwipeEvent(sessionId: String, direction: String, distancePx: Double, durationMs: Int, velocity: Double, acceleration: Double) {
         let event = BehaviorEvent(
             sessionId: sessionId,
             type: .swipe,
             payload: [
-                "velocity": velocity
+                "velocity": velocity,
+                "direction": direction,
+                "distance": distancePx,
+                "duration_ms": durationMs,
+                "acceleration": acceleration
             ]
         )
         sdk?.emitEvent(event)
@@ -224,18 +304,90 @@ internal class GestureSignalCollector: NSObject {
     private func currentTimestampMs() -> Int64 {
         return Int64(Date().timeIntervalSince1970 * 1000)
     }
+
+    /// True when the current first responder is a text field or text view (keyboard open).
+    /// Taps/long presses are not counted in that case so they aren't double-counted as tap events.
+    private func isTextInputFirstResponder() -> Bool {
+        guard let window = Self.keyWindow() else { return false }
+        guard let firstResponder = window.findFirstResponder() else { return false }
+        return firstResponder is UITextField || firstResponder is UITextView
+    }
+}
+
+// MARK: - Key window and first responder (keyboard-open check)
+private extension GestureSignalCollector {
+    static func keyWindow() -> UIWindow? {
+        if #available(iOS 13.0, *) {
+            return UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first { $0.isKeyWindow }
+        } else {
+            return UIApplication.shared.keyWindow
+        }
+    }
+}
+
+private extension UIWindow {
+    func findFirstResponder() -> UIView? {
+        if let r = rootViewController?.view?.findFirstResponderInHierarchy() { return r }
+        if let presented = rootViewController?.presentedViewController?.view?.findFirstResponderInHierarchy() { return presented }
+        return nil
+    }
+}
+
+private extension UIView {
+    func findFirstResponderInHierarchy() -> UIView? {
+        if isFirstResponder { return self }
+        for subview in subviews {
+            if let r = subview.findFirstResponderInHierarchy() { return r }
+        }
+        return nil
+    }
 }
 
 // MARK: - UIGestureRecognizerDelegate
 extension GestureSignalCollector: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        // Allow our gesture recognizers to work alongside others
+        // Allow our gesture recognizers to work alongside others, but not with scroll view pan recognizers
+        // Scroll views have their own pan gesture recognizers that should take priority
+        if otherGestureRecognizer.view is UIScrollView {
+            return false
+        }
         return true
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        // Always receive touches without blocking
+        guard let view = touch.view else {
+            return true
+        }
+        
+        // Don't interfere with scroll views - let them handle their own gestures
+        // Check if the touch is on a scroll view or any of its subviews
+        var currentView: UIView? = view
+        while let checkView = currentView {
+            if checkView is UIScrollView {
+                // If it's a pan gesture recognizer and we're on a scroll view, don't handle it
+                // (scroll views should handle vertical scrolling)
+                if gestureRecognizer is UIPanGestureRecognizer {
+                    return false
+                }
+                // For tap/long press, still allow but be more careful
+                break
+            }
+            currentView = checkView.superview
+        }
+        
         return true
+    }
+    
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Our pan gesture should fail if a scroll view's pan gesture recognizes
+        // This ensures scroll views get priority for vertical scrolling
+        if gestureRecognizer is UIPanGestureRecognizer && otherGestureRecognizer.view is UIScrollView {
+            return true
+        }
+        return false
     }
 }
 
