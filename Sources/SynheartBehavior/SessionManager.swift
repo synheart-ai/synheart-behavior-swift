@@ -1,9 +1,26 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
 #if canImport(SystemConfiguration)
 import SystemConfiguration
+#endif
+
+#if canImport(UIKit)
+private typealias SynheartDeviceOrientation = UIDeviceOrientation
+#else
+private enum SynheartDeviceOrientation {
+    case unknown
+    case portrait
+    case portraitUpsideDown
+    case landscapeLeft
+    case landscapeRight
+    case faceUp
+    case faceDown
+}
 #endif
 
 /// Manages behavioral tracking sessions and aggregates statistics.
@@ -39,8 +56,8 @@ internal class SessionManager {
 
     // Device context tracking
     private var startScreenBrightness: CGFloat = 0.5
-    private var startOrientation: UIDeviceOrientation = .portrait
-    private var lastOrientation: UIDeviceOrientation = .portrait
+    private var startOrientation: SynheartDeviceOrientation = .portrait
+    private var lastOrientation: SynheartDeviceOrientation = .portrait
     private var orientationChangeCount: Int = 0
 
     // Session spacing tracking
@@ -354,24 +371,24 @@ internal class SessionManager {
         return false
     }
     
+    #if canImport(UIKit)
     /// Handle orientation change notification.
     @objc private func orientationDidChange() {
         lock.lock()
         defer { lock.unlock() }
-        
-        #if canImport(UIKit)
+
         let currentOrientation = UIDevice.current.orientation
-        
+
         // Count orientation changes by comparing with last orientation
         // This ensures we count all changes (portrait->landscape->portrait = 2 changes)
-        if currentOrientation != lastOrientation &&
-           currentOrientation.isValidInterfaceOrientation &&
+        if currentOrientation != lastOrientation,
+           currentOrientation.isValidInterfaceOrientation,
            currentSessionId != nil {
             orientationChangeCount += 1
             lastOrientation = currentOrientation
         }
-        #endif
     }
+    #endif
     
     /// Inject device context data into HSI JSON meta section.
     private func injectDeviceContextIntoHsiJson(_ hsiJson: String) -> String {

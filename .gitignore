@@ -7,3 +7,7 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 
+# Flux binaries must NOT be vendored in behavior repos (AGENTS.md Global Hard Rule #8).
+# Users download SynheartFlux.xcframework from synheart-flux releases.
+Frameworks/*.xcframework/
+

@@ -292,19 +292,6 @@ extension ScrollSignalCollector: UIScrollViewDelegate {
             payload: [
                 "velocity": velocity,
                 "acceleration": acceleration,
-                "jitter": jitter
-            ]
-        )
-        sdk?.emitEvent(event)
-    }
-
-    private func emitScrollStopEvent(sessionId: String) {
-        let event = BehaviorEvent(
-            sessionId: sessionId,
-            type: .scroll,
-            payload: [
-                "duration_ms": currentTimestampMs() - scrollStartTime,
-                "final_velocity": lastVelocity
                 "direction": direction,
                 "direction_reversal": directionReversal
             ]

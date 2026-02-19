@@ -1,6 +1,7 @@
 # Synheart Behavioral SDK for iOS
 
-[![Swift](https://img.shields.io/badge/Swift-5.0%2B-orange?logo=swift)](https://swift.org)
+[![CI](https://github.com/synheart-ai/synheart-behavior-swift/actions/workflows/ci.yml/badge.svg)](https://github.com/synheart-ai/synheart-behavior-swift/actions/workflows/ci.yml)
+[![Swift](https://img.shields.io/badge/Swift-5.9%2B-orange?logo=swift)](https://swift.org)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen?logo=swift)](https://www.swift.org/package-manager/)
 [![Platform](https://img.shields.io/badge/platform-iOS%2012%2B-lightgrey)](https://developer.apple.com/ios/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -26,14 +27,14 @@ Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/synheart-ai/synheart-behavior-ios.git", from: "0.2.0")
+    .package(url: "https://github.com/synheart-ai/synheart-behavior-swift.git", from: "0.3.0")
 ]
 ```
 
 Or add via Xcode:
 1. File → Add Packages...
-2. Enter: `https://github.com/synheart-ai/synheart-behavior-ios.git`
-3. Select version: `0.2.0`
+2. Enter: `https://github.com/synheart-ai/synheart-behavior-swift.git`
+3. Select version: `0.3.0`
 
 **📖 New to the SDK?** See [INTEGRATION.md](INTEGRATION.md) for a quick start guide.
 
@@ -180,6 +181,49 @@ To get non-zero **clipboard_activity_rate** and **correction_rate** in the sessi
 - <1 ms processing latency
 - Zero background threads
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Your iOS App                    │
+│                                                  │
+│  ┌────────────────────────────────────────────┐  │
+│  │          SynheartBehavior SDK               │  │
+│  │                                             │  │
+│  │  BehaviorConfig ──► SynheartBehavior        │  │
+│  │                        │                    │  │
+│  │          ┌─────────────┼─────────────┐      │  │
+│  │          ▼             ▼             ▼      │  │
+│  │   InputSignal    ScrollSignal   Attention   │  │
+│  │   Collector      Collector      Collector   │  │
+│  │   (typing,       (velocity,     (app switch,│  │
+│  │    gesture)       jitter)        idle gaps) │  │
+│  │          │             │             │      │  │
+│  │          └──────┬──────┘─────────────┘      │  │
+│  │                 ▼                           │  │
+│  │          EventBatcher ──► Event Handlers     │  │
+│  │                 │                           │  │
+│  │                 ▼                           │  │
+│  │          SessionManager                     │  │
+│  │                 │                           │  │
+│  └─────────────────┼───────────────────────────┘  │
+│                    ▼                              │
+│  ┌─────────────────────────────────────────────┐  │
+│  │  synheart-flux (XCFramework, downloaded)    │  │
+│  │  Rust C FFI ──► HSI-compliant JSON output   │  │
+│  └─────────────────────────────────────────────┘  │
+│                    │                              │
+│                    ▼                              │
+│           HsiBehaviorPayload                     │
+│           (HSI 1.0 format)                       │
+└─────────────────────────────────────────────────┘
+         │
+         ▼ (passed to synheart-core for ingestion)
+```
+
+Signals flow: **Collectors → EventBatcher → SessionManager → FluxBridge → HSI output**.
+The SDK never generates HSI directly — all metrics are computed by synheart-flux.
+
 ## Testing
 
 ```bash
@@ -194,7 +238,6 @@ swift test
 | [synheart-behavior](https://github.com/synheart-ai/synheart-behavior) | Specification & docs (Source of Truth) |
 | [synheart-behavior-dart](https://github.com/synheart-ai/synheart-behavior-dart) | Flutter/Dart SDK |
 | [synheart-behavior-kotlin](https://github.com/synheart-ai/synheart-behavior-kotlin) | Android/Kotlin SDK |
-
 | [synheart-behavior-chrome](https://github.com/synheart-ai/synheart-behavior-chrome) | Chrome extension |
 
 ## Requirements
@@ -230,7 +273,53 @@ The example app includes:
 
 ## API Reference
 
-For detailed API documentation, see the [GitHub repository](https://github.com/synheart-ai/synheart-behavior-swift).
+### SynheartBehavior
+
+```swift
+public class SynheartBehavior {
+    init(config: BehaviorConfig)
+    func initialize() throws
+    func dispose()
+
+    // Sessions
+    func startSession(sessionId: String?) throws -> String
+    func endSession(sessionId: String) throws -> BehaviorSessionSummary
+    func endSessionWithHsi(sessionId: String) throws -> (payload: HsiBehaviorPayload, rawJson: String)
+    func getCurrentSessionId() -> String?
+    func getSessionEvents() -> [BehaviorEvent]
+
+    // Events & stats
+    func setEventHandler(_ handler: (BehaviorEvent) -> Void)
+    func setBatchEventHandler(_ handler: ([BehaviorEvent]) -> Void)
+    func sendEvent(_ event: BehaviorEvent)
+    func getCurrentStats() throws -> BehaviorStats
+
+    // Clipboard (for typing correction/clipboard rates)
+    func recordCopy()
+    func recordPaste()
+    func recordCut()
+
+    // Configuration
+    func updateConfig(_ config: BehaviorConfig) throws
+    var isFluxAvailable: Bool { get }
+}
+```
+
+### Key Types
+
+| Type | Description |
+|---|---|
+| `BehaviorConfig` | SDK configuration (signals, batching, consent) |
+| `BehaviorEvent` | Single behavioral event with type and payload |
+| `BehaviorEventType` | `.scroll`, `.tap`, `.swipe`, `.notification`, `.call`, `.typing`, `.clipboard`, `.appSwitch` |
+| `BehaviorStats` | Real-time metrics snapshot (cadence, velocity, stability) |
+| `BehaviorSessionSummary` | Aggregated session metrics |
+| `HsiBehaviorPayload` | HSI 1.0 output from synheart-flux |
+| `FluxBridge` | C FFI bridge to synheart-flux Rust library |
+| `FluxBehaviorProcessor` | Stateful processor with rolling baselines |
+| `BehaviorError` | `.notInitialized`, `.invalidConfiguration`, `.sessionNotFound`, `.fluxNotAvailable`, `.fluxProcessingFailed` |
+
+For advanced Flux usage (stateful processors, baselines), see [SYNHEART_FLUX_INTEGRATION.md](SYNHEART_FLUX_INTEGRATION.md).
 
 ## Contributing
 

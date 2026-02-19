@@ -195,7 +195,8 @@ public func convertToFluxSessionJson(
             continue
         }
         
-        let timestamp = formatter.string(from: Date(timeIntervalSince1970: Double(event.timestamp) / 1000.0))
+        // BehaviorEvent.timestamp is already an ISO 8601 string.
+        let timestamp = event.timestamp
 
         var fluxEvent: [String: Any] = [
             "timestamp": timestamp,
@@ -204,7 +205,7 @@ public func convertToFluxSessionJson(
 
         // Map event-specific data
         switch event.type {
-        case .scrollVelocity, .scrollAcceleration, .scrollJitter, .scrollStop:
+        case .scroll:
             scrollEventCount += 1
             // Scroll direction must be "up" or "down" (Flux doesn't accept "unknown")
             let scrollDirection = event.payload["direction"] as? String ?? "down"
@@ -226,13 +227,13 @@ public func convertToFluxSessionJson(
             
             fluxEvent["scroll"] = scroll
 
-        case .tapRate, .longPressRate:
+        case .tap:
             fluxEvent["tap"] = [
                 "tap_duration_ms": event.payload["duration_ms"] ?? event.payload["tap_duration_ms"] ?? 0,
-                "long_press": event.type == .longPressRate || (event.payload["long_press"] as? Bool ?? false)
+                "long_press": (event.payload["long_press"] as? Bool ?? false)
             ]
 
-        case .dragVelocity:
+        case .swipe:
             // Swipe direction must be "left" or "right" (Flux doesn't accept "unknown")
             let swipeDirection = event.payload["direction"] as? String ?? "right"
             let validDirection = (swipeDirection == "left" || swipeDirection == "right") ? swipeDirection : "right"
@@ -244,10 +245,11 @@ public func convertToFluxSessionJson(
         case .appSwitch:
             fluxEvent["app_switch"] = [
                 "from_app_id": event.payload["from_app_id"] ?? event.payload["from_app"] ?? "",
-                "to_app_id": event.payload["to_app_id"] ?? event.payload["to_app"] ?? ""
+                "to_app_id": event.payload["to_app_id"] ?? event.payload["to_app"] ?? "",
+                "action": event.payload["action"] ?? ""
             ]
 
-        case .typingCadence, .typingBurst:
+        case .typing:
             var typing: [String: Any] = [:]
             
             // Convert typing speed from taps/second to characters per minute (CPM)
@@ -311,6 +313,10 @@ public func convertToFluxSessionJson(
             
             fluxEvent["typing"] = typing
 
+        case .clipboard:
+            // Flux does not accept a "clipboard" event type; clipboard counts are provided via typing events.
+            break
+
         default:
             // Other event types don't need special mapping
             break
@@ -339,24 +345,14 @@ public func convertToFluxSessionJson(
 /// Map BehaviorEventType to synheart-flux event type string.
 private func mapEventType(_ type: BehaviorEventType) -> String {
     switch type {
-    case .scrollVelocity, .scrollAcceleration, .scrollJitter, .scrollStop:
-        return "scroll"
-    case .tapRate:
-        return "tap"
-    case .longPressRate:
-        return "tap"
-    case .dragVelocity:
-        return "swipe"
-    case .appSwitch:
-        return "app_switch"
-    case .typingCadence, .typingBurst:
-        return "typing"
-    case .foregroundDuration:
-        return "app_switch"
-    case .idleGap, .microIdle, .midIdle, .taskDropIdle:
-        return "idle"
-    default:
-        return "unknown"
+    case .scroll: return "scroll"
+    case .tap: return "tap"
+    case .swipe: return "swipe"
+    case .notification: return "notification"
+    case .call: return "call"
+    case .typing: return "typing"
+    case .appSwitch: return "app_switch"
+    case .clipboard: return "unknown"
     }
 }
 

@@ -206,12 +206,7 @@ internal class InputSignalCollector {
             "number_of_paste": session.numberOfPaste,
             "number_of_cut": session.numberOfCut
         ]
-        let event = BehaviorEvent(
-            sessionId: sessionId,
-            timestamp: currentTimestampMs(),
-            type: .typingCadence,
-            payload: payload
-        )
+        let event = BehaviorEvent(sessionId: sessionId, type: .typing, payload: payload)
         
         sdk?.emitEvent(event)
         currentTypingSession = nil
@@ -291,30 +286,6 @@ internal class InputSignalCollector {
         
         return mean > 0 ? stdDev / mean : 0.0  // Coefficient of variation
     }
-
-    private func emitTypingCadenceEvent(sessionId: String, cadence: Double, interKeyLatency: Double) {
-        let event = BehaviorEvent(
-            sessionId: sessionId,
-            type: .typing,
-            payload: [
-                "typing_speed": cadence,
-                "mean_inter_tap_interval_ms": interKeyLatency,
-                "typing_tap_count": currentBurstLength
-            ]
-        )
-        sdk?.emitEvent(event)
-    }
-
-    private func emitBurstEvent(sessionId: String, burstLength: Int) {
-        let event = BehaviorEvent(
-            sessionId: sessionId,
-            type: .typing,
-            payload: [
-                "typing_tap_count": burstLength
-            ]
-        )
-        sdk?.emitEvent(event)
-    }
     
     private func calculateCadenceStability(_ latencies: [Int64]) -> Double {
         guard latencies.count > 1 else {
@@ -364,6 +335,11 @@ internal class InputSignalCollector {
 
     func start() {}
     func stop() {}
+
+    func endActiveTypingSession() {}
+    func recordCopy() {}
+    func recordPaste() {}
+    func recordCut() {}
 
     func getCurrentStats() -> (cadence: Double?, interKeyLatency: Double?, burstLength: Int?) {
         (nil, nil, nil)
