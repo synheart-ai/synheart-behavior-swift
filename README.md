@@ -17,7 +17,7 @@ A lightweight, privacy-preserving iOS SDK that collects digital behavioral signa
 - 📈 **On-Demand Metrics**: Calculate behavioral metrics for custom time ranges within sessions
 - 📱 **System State Tracking**: Internet connectivity, charging state, and device context
 
-The SDK is an **input layer**: it captures interaction events and emits per-session summaries. Higher-level metrics (focus hint, distraction score, HSI fusion) are computed downstream by `synheart-core-runtime` when behavior events are fed through Synheart Core.
+The SDK is an **input layer**: it captures interaction events and emits per-session summaries. Higher-level metrics (focus hint, distraction score, HSI fusion) are computed downstream by the Synheart runtime when behavior events are fed through Synheart Core.
 
 ## Installation
 
@@ -94,16 +94,18 @@ print("App switches per minute: \(stats.appSwitchesPerMinute)")
 
 ## Event Types
 
-The SDK collects these behavioral event types:
+`BehaviorEventType` has **eight canonical values**:
+`.scroll, .tap, .swipe, .appSwitch, .notification, .call, .typing,
+.clipboard`.
 
-- **Scroll**: Velocity, acceleration, direction, direction reversals (for scroll jitter calculation)
-- **Tap**: Duration, long-press detection. **Taps are not counted while the keyboard is open** (when a text field or text view is first responder), so typing interaction is not double-counted as tap events.
-- **Swipe**: Direction, distance, velocity, acceleration
-- **Notification**: Received, opened, ignored (requires permission)
-- **Call**: Answered, ignored, dismissed (requires permission)
-- **Typing**: Speed, cadence, burstiness, cadence variability, gap ratio, activity ratio, interaction intensity, deep typing, plus backspace/copy/paste/cut counts (no content)
-- **Clipboard**: Copy / paste / cut event counts (no content)
-- **App switch**: Used internally for task-switch metrics
+- **.scroll**: Velocity, acceleration, direction, direction reversals (for scroll jitter calculation)
+- **.tap**: Duration, long-press detection. **Taps are not counted while the keyboard is open** (when a text field or text view is first responder), so typing interaction is not double-counted as tap events.
+- **.swipe**: Direction, distance, velocity, acceleration
+- **.appSwitch**: Foreground/background transitions, feeds task-switch metrics
+- **.notification**: Received, opened, ignored (requires permission)
+- **.call**: Answered, ignored, dismissed (requires permission)
+- **.typing**: Speed, cadence, burstiness, cadence variability, gap ratio, activity ratio, interaction intensity, deep typing, plus backspace/copy/paste/cut counts (no content)
+- **.clipboard**: Copy / paste / cut event counts (no content)
 
 ### Typing: clipboard and correction rates
 
@@ -126,11 +128,15 @@ The session typing summary derives `clipboardActivityRate` and `correctionRate` 
 
 ## Performance
 
-- <2% CPU usage
-- <500 KB memory footprint
-- <2% battery overhead
-- <1 ms processing latency
-- Zero background threads
+These are **design targets — measure on your build**. Specific CPU /
+memory / battery numbers are deployment-dependent; profile your
+integration with Instruments on the iOS device class you ship.
+
+- target < 2% CPU usage
+- target < 500 KB memory footprint
+- target < 2% battery overhead
+- target < 1 ms processing latency
+- Zero background threads by design
 
 ## Architecture
 
@@ -160,7 +166,7 @@ The session typing summary derives `clipboardActivityRate` and `correctionRate` 
          ▼ (events forwarded to Synheart Core for HSI fusion)
 ```
 
-The SDK is the **collector**. Higher-level metrics and HSI envelopes are produced downstream by `synheart-core-runtime` when behavior is fed through Synheart Core.
+The SDK is the **collector**. Higher-level metrics and HSI envelopes are produced downstream by the Synheart runtime when behavior is fed through Synheart Core.
 
 ## Testing
 
