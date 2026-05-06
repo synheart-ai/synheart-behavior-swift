@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (docs) — 2026-05-05
+- README rewritten to remove public exposure of internal Flux integration: dropped the "Required: synheart-flux" install section, `synheart-flux 0.1.1+` requirement, `SynheartFlux.xcframework` references, `FluxBridge.shared.behaviorToHsi(...)` example, "All metrics computed via Flux" claim, "Breaking Changes — Flux is required" history, `endSessionWithHsi` and `isFluxAvailable` from API table, `HsiBehaviorPayload` / `FluxBridge` / `FluxBehaviorProcessor` / `BehaviorError.fluxNotAvailable` / `.fluxProcessingFailed` from Key Types.
+- README `<150 KB compiled, <2% CPU, <500 KB memory` performance puffery removed (unverified).
+- README "six types of behavioral events" wording aligned with the actual 8-value `BehaviorEventType` enum.
+- The `endSessionWithHsi(sessionId:)`, `isFluxAvailable`, and `recordCopy()/Paste()/Cut()` symbols **remain in the public Swift source** for now; only the README references were dropped pending a follow-up alignment with the Flutter / Kotlin SDKs.
+
 ## [0.3.0] - 2026-02-18
 
 ### Added

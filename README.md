@@ -10,14 +10,14 @@ A lightweight, privacy-preserving iOS SDK that collects digital behavioral signa
 
 ## Features
 
-- 🎯 **Privacy-First**: No text, content, or PII collected - only timing-based signals
-- ⚡ **Lightweight**: <150 KB compiled, <2% CPU usage, <500 KB memory footprint
+- 🎯 **Privacy-First**: No text, content, or PII collected — only timing-based signals
 - 🔄 **Event Streaming**: Real-time event callbacks for behavioral signals
 - 📊 **Session Tracking**: Built-in session management with comprehensive summaries
 - 🎨 **Swift Package Manager**: Easy integration via SPM
 - 📈 **On-Demand Metrics**: Calculate behavioral metrics for custom time ranges within sessions
-- 🔬 **HSI-Compliant**: All metrics computed using synheart-flux for Human State Index compliance
 - 📱 **System State Tracking**: Internet connectivity, charging state, and device context
+
+The SDK is an **input layer**: it captures interaction events and emits per-session summaries. Higher-level metrics (focus hint, distraction score, HSI fusion) are computed downstream by `synheart-core-runtime` when behavior events are fed through Synheart Core.
 
 ## Installation
 
@@ -38,18 +38,6 @@ Or add via Xcode:
 
 **📖 New to the SDK?** See [INTEGRATION.md](INTEGRATION.md) for a quick start guide.
 
-## Required: synheart-flux (HSI metrics)
-
-The SDK **requires** the native `synheart-flux` library for computing all behavioral and typing metrics. Install it as follows:
-
-1. Download `SynheartFlux.xcframework` from the [synheart-flux releases](https://github.com/synheart-ai/synheart-flux/releases)
-2. Extract and copy the framework into your project's `Frameworks/` directory
-3. Add it as a framework dependency to your app target in Xcode
-
-**Note**: The SDK requires synheart-flux version 0.1.1 or later. For **clipboard_activity_rate** and **correction_rate** in the typing summary, use synheart-flux **0.3.0** or later.
-
-For full details (usage, troubleshooting, building from source), see [`SYNHEART_FLUX_INTEGRATION.md`](SYNHEART_FLUX_INTEGRATION.md).
-
 ## Usage
 
 ### Initialization
@@ -66,11 +54,6 @@ let config = BehaviorConfig(
 
 let behavior = SynheartBehavior(config: config)
 try behavior.initialize()
-
-// Verify Flux is available
-if behavior.isFluxAvailable {
-    print("synheart-flux is ready for HSI calculations")
-}
 ```
 
 ### Event Handling
@@ -95,41 +78,9 @@ let sessionId = try behavior.startSession()
 
 // ... user interacts with app ...
 
-let (hsiPayload, rawHsiJson) = try behavior.endSessionWithHsi(sessionId: sessionId)
-print("Session duration: \(hsiPayload.behaviorWindows.first?.durationSec ?? 0)s")
-print("Total events: \(hsiPayload.behaviorWindows.first?.eventSummary.totalEvents ?? 0)")
-print("Focus hint: \(hsiPayload.behaviorReadings.first(where: { $0.axis == "focus" })?.score ?? 0)")
-```
-
-### On-Demand Metrics Calculation
-
-Calculate behavioral metrics for a custom time range within a session:
-
-```swift
-// Get events from a session
-let events = behavior.getSessionEvents()
-
-// Filter events by time range
-let startTime = Date(timeIntervalSince1970: 1767688063)
-let endTime = Date(timeIntervalSince1970: 1767688130)
-let filteredEvents = events.filter { event in
-    let eventDate = Date(timeIntervalSince1970: Double(event.timestamp) / 1000.0)
-    return eventDate >= startTime && eventDate <= endTime
-}
-
-// Convert to Flux JSON and compute HSI metrics
-let fluxJson = convertToFluxSessionJson(
-    sessionId: sessionId,
-    deviceId: deviceId,
-    timezone: timezone,
-    startTime: startTime,
-    endTime: endTime,
-    events: filteredEvents
-)
-
-if let hsiJson = FluxBridge.shared.behaviorToHsi(fluxJson) {
-    print("HSI metrics computed: \(hsiJson)")
-}
+let summary = try behavior.endSession(sessionId: sessionId)
+print("Total events: \(summary.activitySummary.totalEvents)")
+print("Typing speed: \(summary.typingSessionSummary?.typingSpeed ?? 0)")
 ```
 
 ### Manual Polling
@@ -143,23 +94,23 @@ print("App switches per minute: \(stats.appSwitchesPerMinute)")
 
 ## Event Types
 
-The SDK collects six types of behavioral events:
+The SDK collects these behavioral event types:
 
 - **Scroll**: Velocity, acceleration, direction, direction reversals (for scroll jitter calculation)
 - **Tap**: Duration, long-press detection. **Taps are not counted while the keyboard is open** (when a text field or text view is first responder), so typing interaction is not double-counted as tap events.
 - **Swipe**: Direction, distance, velocity, acceleration
 - **Notification**: Received, opened, ignored (requires permission)
 - **Call**: Answered, ignored, dismissed (requires permission)
-- **Typing**: Comprehensive typing session metrics: speed, cadence, burstiness, cadence variability, gap ratio, activity ratio, interaction intensity, deep typing, **backspace/copy/paste/cut counts**. Flux uses these to compute **clipboard_activity_rate** and **correction_rate** in the typing summary (synheart-flux 0.3.0+).
-
-**Note**: App switch events are tracked internally and sent to Flux for task switch calculations, but are not displayed as one of the six event types in event streams or UI. App switch count is available in session summaries.
+- **Typing**: Speed, cadence, burstiness, cadence variability, gap ratio, activity ratio, interaction intensity, deep typing, plus backspace/copy/paste/cut counts (no content)
+- **Clipboard**: Copy / paste / cut event counts (no content)
+- **App switch**: Used internally for task-switch metrics
 
 ### Typing: clipboard and correction rates
 
-To get non-zero **clipboard_activity_rate** and **correction_rate** in the session typing summary (from Flux):
+The session typing summary derives `clipboardActivityRate` and `correctionRate` from event counts the SDK emits:
 
 - **Backspace/correction**: The SDK infers deletions from text length decrease. **Cut** is not counted as backspace (only actual backspace/delete taps are).
-- **Copy/paste/cut**: The SDK does not observe the system clipboard. Call `behavior.recordCopy()`, `behavior.recordPaste()`, or `behavior.recordCut()` when the user performs those actions—e.g. from a custom `UITextField`/`UITextView` that overrides `copy(_:)`, `paste(_:)`, and `cut(_:)`. The Example app uses `BehaviorTrackingTextField` for this; you can use that class or wire the same calls in your own text input.
+- **Copy/paste/cut**: The SDK does not observe the system clipboard. Call `behavior.recordCopy()`, `behavior.recordPaste()`, or `behavior.recordCut()` when the user performs those actions — e.g. from a custom `UITextField`/`UITextView` that overrides `copy(_:)`, `paste(_:)`, and `cut(_:)`. The Example app uses `BehaviorTrackingTextField` for this; you can use that class or wire the same calls in your own text input.
 
 ## Privacy & Compliance
 
@@ -196,33 +147,20 @@ To get non-zero **clipboard_activity_rate** and **correction_rate** in the sessi
 │  │          ▼             ▼             ▼      │  │
 │  │   InputSignal    ScrollSignal   Attention   │  │
 │  │   Collector      Collector      Collector   │  │
-│  │   (typing,       (velocity,     (app switch,│  │
-│  │    gesture)       jitter)        idle gaps) │  │
 │  │          │             │             │      │  │
 │  │          └──────┬──────┘─────────────┘      │  │
 │  │                 ▼                           │  │
 │  │          EventBatcher ──► Event Handlers     │  │
 │  │                 │                           │  │
 │  │                 ▼                           │  │
-│  │          SessionManager                     │  │
-│  │                 │                           │  │
-│  └─────────────────┼───────────────────────────┘  │
-│                    ▼                              │
-│  ┌─────────────────────────────────────────────┐  │
-│  │  synheart-flux (XCFramework, downloaded)    │  │
-│  │  Rust C FFI ──► HSI-compliant JSON output   │  │
+│  │          SessionManager ──► BehaviorSessionSummary │
 │  └─────────────────────────────────────────────┘  │
-│                    │                              │
-│                    ▼                              │
-│           HsiBehaviorPayload                     │
-│           (HSI 1.0 format)                       │
 └─────────────────────────────────────────────────┘
          │
-         ▼ (passed to synheart-core for ingestion)
+         ▼ (events forwarded to Synheart Core for HSI fusion)
 ```
 
-Signals flow: **Collectors → EventBatcher → SessionManager → FluxBridge → HSI output**.
-The SDK never generates HSI directly — all metrics are computed by synheart-flux.
+The SDK is the **collector**. Higher-level metrics and HSI envelopes are produced downstream by `synheart-core-runtime` when behavior is fed through Synheart Core.
 
 ## Testing
 
@@ -236,7 +174,7 @@ swift test
 | Repository | Description |
 |---|---|
 | [synheart-behavior](https://github.com/synheart-ai/synheart-behavior) | Specification & docs (Source of Truth) |
-| [synheart-behavior-dart](https://github.com/synheart-ai/synheart-behavior-dart) | Flutter/Dart SDK |
+| [synheart-behavior-flutter](https://github.com/synheart-ai/synheart-behavior-flutter) | Flutter/Dart SDK |
 | [synheart-behavior-kotlin](https://github.com/synheart-ai/synheart-behavior-kotlin) | Android/Kotlin SDK |
 | [synheart-behavior-chrome](https://github.com/synheart-ai/synheart-behavior-chrome) | Chrome extension |
 
@@ -245,18 +183,6 @@ swift test
 - iOS 12.0+
 - Swift 5.9+
 - Xcode 15.0+
-- **synheart-flux** 0.1.1+ (required for HSI metrics); 0.3.0+ for typing `clipboard_activity_rate` and `correction_rate`
-
-## Breaking Changes
-
-### Version 0.2.0
-
-- **Clipboard and correction rates**: Typing summary from Flux includes `clipboard_activity_rate` and `correction_rate` (synheart-flux 0.3.0+). Use `recordCopy()`/`recordPaste()`/`recordCut()` for clipboard counts; cut is not counted as backspace. Taps are not counted when the keyboard is open.
-
-### Version 0.1.0
-
-- **Flux is required**: The SDK requires synheart-flux libraries to be present. If Flux is unavailable, session ending will fail with an error
-- All behavioral metrics come exclusively from Flux, ensuring HSI compliance and cross-platform consistency
 
 ## Example App
 
@@ -269,7 +195,6 @@ The example app includes:
 - **BehaviorTrackingTextField** for typing and clipboard (copy/paste/cut) testing
 - Time range selection for on-demand metrics
 - Comprehensive session results display (including typing clipboard/correction rates)
-- HSI JSON output viewing
 
 ## API Reference
 
@@ -284,7 +209,6 @@ public class SynheartBehavior {
     // Sessions
     func startSession(sessionId: String?) throws -> String
     func endSession(sessionId: String) throws -> BehaviorSessionSummary
-    func endSessionWithHsi(sessionId: String) throws -> (payload: HsiBehaviorPayload, rawJson: String)
     func getCurrentSessionId() -> String?
     func getSessionEvents() -> [BehaviorEvent]
 
@@ -301,7 +225,6 @@ public class SynheartBehavior {
 
     // Configuration
     func updateConfig(_ config: BehaviorConfig) throws
-    var isFluxAvailable: Bool { get }
 }
 ```
 
@@ -314,12 +237,7 @@ public class SynheartBehavior {
 | `BehaviorEventType` | `.scroll`, `.tap`, `.swipe`, `.notification`, `.call`, `.typing`, `.clipboard`, `.appSwitch` |
 | `BehaviorStats` | Real-time metrics snapshot (cadence, velocity, stability) |
 | `BehaviorSessionSummary` | Aggregated session metrics |
-| `HsiBehaviorPayload` | HSI 1.0 output from synheart-flux |
-| `FluxBridge` | C FFI bridge to synheart-flux Rust library |
-| `FluxBehaviorProcessor` | Stateful processor with rolling baselines |
-| `BehaviorError` | `.notInitialized`, `.invalidConfiguration`, `.sessionNotFound`, `.fluxNotAvailable`, `.fluxProcessingFailed` |
-
-For advanced Flux usage (stateful processors, baselines), see [SYNHEART_FLUX_INTEGRATION.md](SYNHEART_FLUX_INTEGRATION.md).
+| `BehaviorError` | `.notInitialized`, `.invalidConfiguration`, `.sessionNotFound` |
 
 ## Contributing
 
