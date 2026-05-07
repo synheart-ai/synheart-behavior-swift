@@ -253,10 +253,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 Apache 2.0 License - see [LICENSE](LICENSE) file for details.
 
-## Author
-
-Israel Goytom
-
 ## Links
 
 - 🔗 [GitHub repository](https://github.com/synheart-ai/synheart-behavior-swift)
