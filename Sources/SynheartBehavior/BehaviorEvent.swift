@@ -10,7 +10,7 @@ public enum BehaviorEventType: String {
     case call = "call"
     case typing = "typing"
     case clipboard = "clipboard"
-    case appSwitch = "appSwitch"
+    case appSwitch = "app_switch"
 }
 
 /// A single behavioral event emitted by the SDK.

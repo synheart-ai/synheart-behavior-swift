@@ -3,19 +3,12 @@ import PackageDescription
 
 // SynheartBehavior SDK
 //
-// Optional integration: synheart-flux
-// ==========================================
-// The SDK runs standalone for event capture + per-session summaries.
-// HSI-compliant behavioral metrics (`endSessionWithHsi()`) require
-// the optional synheart-flux native binary.
-//
-// To enable HSI metrics:
-// 1. Download SynheartFlux.xcframework from synheart-flux releases.
-// 2. Place it in Frameworks/SynheartFlux.xcframework.
-// 3. Add it as a dependency to your app target.
-//
-// FluxBridge detects the binary at runtime; without it, only the
-// HSI-emitting path is unavailable — the rest of the SDK works.
+// A privacy-preserving collector of digital behavioral signals on iOS.
+// The SDK captures interaction events (taps, scrolls, swipes, app
+// switches, idle gaps, typing session counts) and emits per-session
+// summaries. Higher-level behavioral inference (HSI fusion, focus /
+// distraction modeling) lives in the Synheart Core SDK, which consumes
+// the events this package emits.
 
 let package = Package(
     name: "SynheartBehavior",
@@ -33,8 +26,6 @@ let package = Package(
         .target(
             name: "SynheartBehavior",
             dependencies: []
-            // Note: synheart-flux is linked dynamically at runtime if available
-            // No linker settings needed here - FluxBridge handles detection
         ),
         .testTarget(
             name: "SynheartBehaviorTests",
@@ -42,4 +33,3 @@ let package = Package(
         ),
     ]
 )
-

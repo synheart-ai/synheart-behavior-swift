@@ -7,18 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.1] - 2026-05-06
+## [0.3.1] - 2026-05-07
 
-Open-source launch release. Public API and documentation are scrubbed
-of internal Flux integration references; behavioral signal collection
-matches the v0.3.0 capability set.
+Open-source launch release.
+
+The SDK is now a pure behavioral signal collector. Higher-level
+behavioral inference (HSI fusion, focus / distraction modeling, rolling
+baselines) has moved to the Synheart Core SDK, which consumes the
+events this package emits. This SDK no longer carries any native runtime
+dependency.
 
 ### Public surface
 The SDK collects privacy-preserving behavioral signals (taps, scrolls,
 swipes, app switches, idle gaps, typing session counts) on iOS. No
-text, content, or PII is captured. Behavioral and typing metrics are
-surfaced through `BehaviorSessionSummary` (`behavioralMetrics`,
-`typingMetrics`, `deepFocusBlocks`).
+text, content, or PII is captured. Per-session aggregates are exposed
+on `BehaviorSessionSummary` and real-time stats on `BehaviorStats`.
 
 - `SynheartBehavior`, `BehaviorConfig`, `BehaviorEvent`,
   `BehaviorEventType`, `BehaviorSessionSummary`, `BehaviorStats`,
@@ -26,32 +29,35 @@ surfaced through `BehaviorSessionSummary` (`behavioralMetrics`,
 - Event-handler callback API (`setEventHandler`, `setBatchEventHandler`)
   for real-time behavioral events.
 - Session-tracking API with summaries; manual stats polling.
-- On-demand metrics for ended sessions:
-  `calculateMetricsForTimeRange()`.
+- `BehaviorEvent.clipboard(sessionId:action:context:)` factory + `sendEvent(_:)`
+  for host-app clipboard tracking.
+
+### Removed
+- The native runtime integration (`FluxBridge`, `FluxBehaviorProcessor`,
+  `FluxError`) and all `Hsi*` payload structs. Higher-level metrics
+  belong in `synheart-core-swift`.
+- `endSessionWithHsi(sessionId:)`, `isFluxAvailable`, and
+  `recordCopy()/Paste()/Cut()` on `SynheartBehavior`. Host apps that
+  want clipboard tracking emit `BehaviorEvent.clipboard(...)` via
+  `sendEvent(_:)`, matching the Flutter and Kotlin SDKs.
+- `BehaviorError.fluxNotAvailable` and `.fluxProcessingFailed` cases.
+- `INTEGRATION.md`, `SYNHEART_FLUX_INTEGRATION.md`, the `Frameworks/`
+  directory placeholder for `SynheartFlux.xcframework`, and the
+  `number_of_copy/paste/cut/delete` fields from typing event payloads
+  (clipboard activity is now its own event type).
 
 ### Changed
-- README rewritten to remove public exposure of internal Flux
-  integration: dropped the "Required: synheart-flux" install section,
-  `synheart-flux 0.1.1+` requirement, `SynheartFlux.xcframework`
-  references, `FluxBridge.shared.behaviorToHsi(...)` example, "All
-  metrics computed via Flux" claim, the `endSessionWithHsi` /
-  `isFluxAvailable` API table rows, and the
-  `HsiBehaviorPayload` / `FluxBridge` / `FluxBehaviorProcessor` /
-  `BehaviorError.fluxNotAvailable` / `.fluxProcessingFailed` Key
-  Types references.
-- README performance puffery (`<150 KB compiled, <2% CPU,
-  <500 KB memory`) removed (unverified).
-- README "six types of behavioral events" wording aligned with the
-  actual 8-value `BehaviorEventType` enum.
-- Author block dropped from README to match org-wide convention.
-- `synheart-flux` is now declared optional in `Package.swift`, not
-  required.
+- README rewritten to mirror the Flutter SDK's structure (source-
+  available banner, full Privacy & Compliance breakdown, Architecture
+  diagram, Troubleshooting section, "Not a Medical Device" notice).
+- `Package.swift` carries no native-runtime build settings.
 
-### Note
-- The `endSessionWithHsi(sessionId:)`, `isFluxAvailable`, and
-  `recordCopy()/Paste()/Cut()` symbols remain in the public Swift
-  source for now; only README references were dropped pending a
-  follow-up alignment with the Flutter / Kotlin SDKs.
+### Added
+- `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
+  `.github/CODEOWNERS`, `.github/ISSUE_TEMPLATE/`,
+  `.github/pull_request_template.md`,
+  `.github/workflows/close-external-prs.yml`, `.github/dependabot.yml`.
+- `Example/GUIDE.md` walkthrough mirroring the Flutter example guide.
 
 ### Platform support
 - iOS 12.0+

@@ -370,7 +370,6 @@ class MainViewController: UIViewController {
     }
     
     private func updateUI() {
-        let fluxStatus = behavior?.isFluxAvailable ?? false
         let isInitialized = behavior != nil
         
         // Status Card
@@ -455,55 +454,19 @@ class MainViewController: UIViewController {
         self.sessionId = sessionId
         
         do {
-            var hsiPayload: HsiBehaviorPayload? = nil
-            var summary: BehaviorSessionSummary? = nil
-            
-            let hsiResult = try behavior.endSessionWithHsi(sessionId: sessionId)
-            hsiPayload = hsiResult.payload
-            let rawHsiJson = hsiResult.rawJson
-            
-            if let window = hsiResult.payload.behaviorWindows.first {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                let startTime = formatter.date(from: window.startTimeUtc) ?? Date()
-                let endTime = formatter.date(from: window.endTimeUtc) ?? Date()
-                // Use SessionManager's app switch count (source of truth) instead of Flux's count
-                let appSwitchCount = behavior.getAppSwitchCount()
-                summary = BehaviorSessionSummary(
-                    sessionId: window.sessionId,
-                    startTimestamp: Int64(startTime.timeIntervalSince1970 * 1000),
-                    endTimestamp: Int64(endTime.timeIntervalSince1970 * 1000),
-                    duration: Int64(window.durationSec * 1000),
-                    eventCount: window.eventSummary.totalEvents,
-                    averageTypingCadence: nil,
-                    averageScrollVelocity: nil,
-                    appSwitchCount: appSwitchCount,
-                    stabilityIndex: nil,
-                    fragmentationIndex: nil
-                )
-            }
-            
-            guard let finalSummary = summary else {
-                statusValueLabel.text = "✗ Failed to get session summary"
-                statusValueLabel.textColor = .systemRed
-                return
-            }
-            
-            // Get events from the session before ending
+            // Snapshot events before ending — endSession clears the session.
             let sessionEvents = behavior.getSessionEvents()
-            
+            let summary = try behavior.endSession(sessionId: sessionId)
+
             isSessionActive = false
             updateUI()
-            
+
             let resultsVC = SessionResultsViewController(
-                summary: finalSummary,
-                hsiPayload: hsiPayload,
-                behavior: behavior,
-                rawHsiJson: rawHsiJson,
+                summary: summary,
                 events: sessionEvents
             )
             navigationController?.pushViewController(resultsVC, animated: true)
-            
+
             self.sessionId = nil
         } catch {
             let errorMessage: String
@@ -515,10 +478,6 @@ class MainViewController: UIViewController {
                     errorMessage = "Invalid configuration"
                 case .sessionNotFound:
                     errorMessage = "Session not found"
-                case .fluxNotAvailable:
-                    errorMessage = "Flux is required but not available"
-                case .fluxProcessingFailed:
-                    errorMessage = "Flux processing failed"
                 }
             } else {
                 errorMessage = "\(error)"

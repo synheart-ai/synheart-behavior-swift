@@ -26,11 +26,7 @@ internal class InputSignalCollector {
         var keystrokes: [Int64]  // Timestamps of keystrokes
         var interKeyLatencies: [Int64]  // Inter-key intervals in ms (only actual intervals, not 0 for first keystroke)
         var previousLength: Int = 0
-        var backspaceCount: Int = 0   // Only actual backspace/delete taps; cut removals are not counted
-        var lastDeletionAmount: Int = 0  // Last length decrease we attributed to backspace; undone when recordCut() is called
-        var numberOfCopy: Int = 0    // Set via recordCopy() from custom text view
-        var numberOfPaste: Int = 0   // Set via recordPaste() from custom text view
-        var numberOfCut: Int = 0     // Set via recordCut() from custom text view
+        var backspaceCount: Int = 0   // Inferred from text-length decreases.
     }
 
     init(sdk: SynheartBehavior, sessionManager: SessionManager) {
@@ -184,8 +180,8 @@ internal class InputSignalCollector {
             return
         }
         
-        // Emit typing event with all metrics (aligned with Kotlin/Dart; correction/clipboard for Flux)
-        var payload: [String: Any] = [
+        // Emit typing event with timing-only metrics (aligned with Flutter / Kotlin).
+        let payload: [String: Any] = [
             "typing_tap_count": typingTapCount,
             "typing_speed": typingSpeed,
             "mean_inter_tap_interval_ms": meanInterTapIntervalMs,
@@ -201,10 +197,6 @@ internal class InputSignalCollector {
             "end_at": endAt,
             "deep_typing": deepTyping,
             "backspace_count": session.backspaceCount,
-            "number_of_delete": 0,  // iOS has no forward-delete key
-            "number_of_copy": session.numberOfCopy,
-            "number_of_paste": session.numberOfPaste,
-            "number_of_cut": session.numberOfCut
         ]
         let event = BehaviorEvent(sessionId: sessionId, type: .typing, payload: payload)
         
@@ -240,38 +232,12 @@ internal class InputSignalCollector {
         } else if currentLength < session.previousLength {
             let deleted = session.previousLength - currentLength
             session.backspaceCount += deleted
-            session.lastDeletionAmount = deleted  // So recordCut() can subtract this (cut shouldn't count as backspace)
             session.previousLength = currentLength
             currentTypingSession = session
         } else {
             session.previousLength = currentLength
             currentTypingSession = session
         }
-    }
-    
-    /// Record a copy action (call from custom UITextView/UITextField that overrides copy).
-    func recordCopy() {
-        guard var session = currentTypingSession else { return }
-        session.numberOfCopy += 1
-        currentTypingSession = session
-    }
-    
-    /// Record a paste action (call from custom UITextView/UITextField that overrides paste).
-    func recordPaste() {
-        guard var session = currentTypingSession else { return }
-        session.numberOfPaste += 1
-        currentTypingSession = session
-    }
-    
-    /// Record a cut action (call from custom UITextView/UITextField that overrides cut).
-    /// Also undoes the last backspace count for the removed length so cut is not counted as backspace.
-    func recordCut() {
-        guard var session = currentTypingSession else { return }
-        session.numberOfCut += 1
-        // That length decrease was a cut, not backspace — don't count it toward correction_rate
-        session.backspaceCount = max(0, session.backspaceCount - session.lastDeletionAmount)
-        session.lastDeletionAmount = 0
-        currentTypingSession = session
     }
     
     private func calculateBurstiness(_ latencies: [Int64]) -> Double {
@@ -337,9 +303,6 @@ internal class InputSignalCollector {
     func stop() {}
 
     func endActiveTypingSession() {}
-    func recordCopy() {}
-    func recordPaste() {}
-    func recordCut() {}
 
     func getCurrentStats() -> (cadence: Double?, interKeyLatency: Double?, burstLength: Int?) {
         (nil, nil, nil)
