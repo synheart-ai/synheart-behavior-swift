@@ -36,20 +36,6 @@ Or add via Xcode:
 2. Enter: `https://github.com/synheart-ai/synheart-behavior-swift.git`
 3. Select version: `0.3.0`
 
-**📖 New to the SDK?** See [INTEGRATION.md](INTEGRATION.md) for a quick start guide.
-
-## Required: synheart-flux (HSI metrics)
-
-The SDK **requires** the native `synheart-flux` library for computing all behavioral and typing metrics. Install it as follows:
-
-1. Download `SynheartFlux.xcframework` from the [synheart-flux releases](https://github.com/synheart-ai/synheart-flux/releases)
-2. Extract and copy the framework into your project's `Frameworks/` directory
-3. Add it as a framework dependency to your app target in Xcode
-
-**Note**: The SDK requires synheart-flux version 0.1.1 or later. For **clipboard_activity_rate** and **correction_rate** in the typing summary, use synheart-flux **0.3.0** or later.
-
-For full details (usage, troubleshooting, building from source), see [`SYNHEART_FLUX_INTEGRATION.md`](SYNHEART_FLUX_INTEGRATION.md).
-
 ## Usage
 
 ### Initialization
@@ -314,12 +300,7 @@ public class SynheartBehavior {
 | `BehaviorEventType` | `.scroll`, `.tap`, `.swipe`, `.notification`, `.call`, `.typing`, `.clipboard`, `.appSwitch` |
 | `BehaviorStats` | Real-time metrics snapshot (cadence, velocity, stability) |
 | `BehaviorSessionSummary` | Aggregated session metrics |
-| `HsiBehaviorPayload` | HSI 1.0 output from synheart-flux |
-| `FluxBridge` | C FFI bridge to synheart-flux Rust library |
-| `FluxBehaviorProcessor` | Stateful processor with rolling baselines |
-| `BehaviorError` | `.notInitialized`, `.invalidConfiguration`, `.sessionNotFound`, `.fluxNotAvailable`, `.fluxProcessingFailed` |
-
-For advanced Flux usage (stateful processors, baselines), see [SYNHEART_FLUX_INTEGRATION.md](SYNHEART_FLUX_INTEGRATION.md).
+| `BehaviorError` | `.notInitialized`, `.invalidConfiguration`, `.sessionNotFound` |
 
 ## Contributing
 
