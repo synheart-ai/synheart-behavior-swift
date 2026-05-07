@@ -3,7 +3,7 @@ import PackageDescription
 
 // SynheartBehavior SDK
 //
-// Optional integration: synheart-flux (Rust)
+// Optional integration: synheart-flux
 // ==========================================
 // The SDK runs standalone for event capture + per-session summaries.
 // HSI-compliant behavioral metrics (`endSessionWithHsi()`) require

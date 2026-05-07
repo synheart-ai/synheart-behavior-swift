@@ -1,10 +1,10 @@
 # Synheart Flux Integration
 
-This document explains how to integrate synheart-flux (Rust library) with SynheartBehavior for HSI-compliant behavioral metrics computation.
+This document explains how to integrate synheart-flux with SynheartBehavior for HSI-compliant behavioral metrics computation.
 
 ## Overview
 
-The SynheartBehavior SDK **requires** synheart-flux (Rust library) for computing behavioral metrics. The SDK provides HSI-compliant output including:
+The SynheartBehavior SDK **requires** synheart-flux for computing behavioral metrics. The SDK provides HSI-compliant output including:
 - Distraction score and focus hint
 - Burstiness (Barabási formula)
 - Task switch rate (exponential saturation)
@@ -20,7 +20,7 @@ The SynheartBehavior SDK **requires** synheart-flux (Rust library) for computing
 ## Benefits
 
 - **HSI Compliance**: Metrics computed using synheart-flux are fully HSI-compliant
-- **Cross-Platform Consistency**: Same Rust code runs on iOS, Android, and other platforms
+- **Cross-Platform Consistency**: Same native code runs on iOS, Android, and other platforms
 - **Baseline Support**: Rolling baselines across 20 sessions
 - **Deterministic Output**: Reproducible results for research
 
