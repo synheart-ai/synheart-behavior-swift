@@ -31,9 +31,8 @@ Please include:
 
 ## Scope
 
-This policy covers the `SynheartBehavior` Swift SDK published from this
-repository. Issues in unrelated dependencies should be reported upstream to
-their maintainers.
+This policy covers the `SynheartBehavior` SDK published from this repository. Issues
+in unrelated dependencies should be reported upstream to their maintainers.
 
 ## Out of scope
 

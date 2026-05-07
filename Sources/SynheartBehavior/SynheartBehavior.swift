@@ -120,47 +120,6 @@ public class SynheartBehavior {
         return summary
     }
 
-    /// End a session and return HSI-compliant output using synheart-flux.
-    ///
-    /// This method uses the Rust synheart-flux library to compute behavioral metrics
-    /// that are fully HSI-compliant, including:
-    /// - Distraction score and focus hint
-    /// - Burstiness (Barabási formula)
-    /// - Task switch rate and notification load
-    /// - Rolling baselines
-    ///
-    /// Flux is required - throws if not available.
-    ///
-    /// - Parameter sessionId: The session ID to end
-    /// - Returns: Tuple containing HSI-compliant behavioral payload and raw JSON string
-    /// - Throws: BehaviorError if the SDK is not initialized or Flux is not available
-    public func endSessionWithHsi(sessionId: String) throws -> (payload: HsiBehaviorPayload, rawJson: String) {
-        guard isInitialized else {
-            throw BehaviorError.notInitialized
-        }
-
-        // End any active typing session before ending the behavior session
-        inputCollector?.endActiveTypingSession()
-
-        // Emit final session stability metrics
-        attentionCollector?.emitSessionStability(sessionId: sessionId)
-
-        // Flush any pending events
-        eventBatcher?.flush()
-
-        // Get HSI output from session manager
-        guard let sessionManager = sessionManager else {
-            throw BehaviorError.invalidConfiguration
-        }
-        
-        return try sessionManager.endSessionWithHsi(sessionId: sessionId)
-    }
-
-    /// Check if synheart-flux is available for HSI-compliant output.
-    public var isFluxAvailable: Bool {
-        return FluxBridge.shared.isAvailable
-    }
-    
     /// Get the current active session ID, if any.
     public func getCurrentSessionId() -> String? {
         guard isInitialized else {
@@ -185,24 +144,6 @@ public class SynheartBehavior {
         return sessionManager?.getAppSwitchCount() ?? 0
     }
     
-    /// Record a copy action in the current typing session.
-    /// Call from a custom UITextView/UITextField that overrides copy(_:) so Flux can compute clipboard_activity_rate.
-    public func recordCopy() {
-        inputCollector?.recordCopy()
-    }
-    
-    /// Record a paste action in the current typing session.
-    /// Call from a custom UITextView/UITextField that overrides paste(_:) so Flux can compute clipboard_activity_rate.
-    public func recordPaste() {
-        inputCollector?.recordPaste()
-    }
-    
-    /// Record a cut action in the current typing session.
-    /// Call from a custom UITextView/UITextField that overrides cut(_:) so Flux can compute clipboard_activity_rate.
-    public func recordCut() {
-        inputCollector?.recordCut()
-    }
-
     /// Get current rolling statistics snapshot.
     public func getCurrentStats() throws -> BehaviorStats {
         guard isInitialized else {
@@ -326,7 +267,7 @@ public class SynheartBehavior {
     internal func emitEvent(_ event: BehaviorEvent) {
         eventBatcher?.addEvent(event)
         sessionManager?.incrementEventCount()
-        // Record event for HSI computation
+        // Record event so it's reachable via getSessionEvents()
         sessionManager?.recordEvent(event)
     }
 }
@@ -336,7 +277,5 @@ public enum BehaviorError: Error, Equatable {
     case notInitialized
     case invalidConfiguration
     case sessionNotFound
-    case fluxNotAvailable
-    case fluxProcessingFailed
 }
 

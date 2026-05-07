@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for taking the time to look at Synheart Behavior (iOS). This document explains
+Thank you for taking the time to look at Synheart Behavior (Swift). This document explains
 how this repository accepts contributions.
 
 ## TL;DR
