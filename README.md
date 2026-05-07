@@ -6,6 +6,11 @@
 [![Platform](https://img.shields.io/badge/platform-iOS%2012%2B-lightgrey)](https://developer.apple.com/ios/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
+> **Source-available.** This repository is open for reading, auditing, and
+> filing issues. We do **not** accept pull requests — see
+> [CONTRIBUTING.md](CONTRIBUTING.md) for the rationale and how to contribute
+> via issues. Security reports go through [SECURITY.md](SECURITY.md).
+
 A lightweight, privacy-preserving iOS SDK that collects digital behavioral signals from smartphones. These signals represent biobehavioral markers strongly correlated with cognitive and emotional states, especially focus, stress, engagement, and fatigue.
 
 ## Features
