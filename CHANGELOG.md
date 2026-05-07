@@ -7,91 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed (docs) — 2026-05-05
-- README rewritten to remove public exposure of internal Flux integration: dropped the "Required: synheart-flux" install section, `synheart-flux 0.1.1+` requirement, `SynheartFlux.xcframework` references, `FluxBridge.shared.behaviorToHsi(...)` example, "All metrics computed via Flux" claim, "Breaking Changes — Flux is required" history, `endSessionWithHsi` and `isFluxAvailable` from API table, `HsiBehaviorPayload` / `FluxBridge` / `FluxBehaviorProcessor` / `BehaviorError.fluxNotAvailable` / `.fluxProcessingFailed` from Key Types.
-- README `<150 KB compiled, <2% CPU, <500 KB memory` performance puffery removed (unverified).
-- README "six types of behavioral events" wording aligned with the actual 8-value `BehaviorEventType` enum.
-- The `endSessionWithHsi(sessionId:)`, `isFluxAvailable`, and `recordCopy()/Paste()/Cut()` symbols **remain in the public Swift source** for now; only the README references were dropped pending a follow-up alignment with the Flutter / Kotlin SDKs.
+## [0.3.1] - 2026-05-06
 
-## [0.3.0] - 2026-02-18
+Open-source launch release. Public API and documentation are scrubbed
+of internal Flux integration references; behavioral signal collection
+matches the v0.3.0 capability set.
 
-### Added
+### Public surface
+The SDK collects privacy-preserving behavioral signals (taps, scrolls,
+swipes, app switches, idle gaps, typing session counts) on iOS. No
+text, content, or PII is captured. Behavioral and typing metrics are
+surfaced through `BehaviorSessionSummary` (`behavioralMetrics`,
+`typingMetrics`, `deepFocusBlocks`).
 
-- `SynheartBehavior` main SDK class with initialize/dispose lifecycle.
-- `BehaviorConfig` for configurable signal collection (input, attention, motion-lite).
-- `BehaviorEvent` with type-safe factory methods: `scroll`, `tap`, `swipe`, `notification`, `call`, `typing`, `clipboard`, `appSwitch`.
-- `BehaviorStats` for real-time behavioral metrics (typing cadence, scroll velocity, tap rate, stability index, fragmentation index).
-- `BehaviorSessionSummary` with aggregated session metrics and deep-focus block detection.
-- `SessionManager` for session lifecycle tracking and statistics aggregation.
-- `EventBatcher` for configurable event batching and delivery.
-- Signal collectors: `InputSignalCollector`, `ScrollSignalCollector`, `GestureSignalCollector`, `AttentionSignalCollector`.
-- Single and batch event handler callbacks.
-- Privacy-preserving design — timing-based signals only, no content capture.
-- Thread-safe implementation with NSLock.
-- Example: `BasicUsage.swift`.
-- Unit tests covering initialization, sessions, events, stats, config, and disposal.
-- GitHub Actions CI/CD workflows (ci.yml, release.yml).
-
-## [0.2.0] - 2026-02-12
-
-### Added
-
-- **Clipboard and correction rates**: Typing session summary from Flux now includes `clipboard_activity_rate` and `correction_rate` (synheart-flux 0.3.0+). SDK sends `number_of_backspace`, `number_of_copy`, `number_of_paste`, `number_of_cut` (and `number_of_delete` as 0 on iOS) in typing events so Flux can compute these rates.
-- **Public API for clipboard**: `SynheartBehavior.recordCopy()`, `recordPaste()`, and `recordCut()` so apps can report copy/paste/cut when the user performs those actions (e.g. from a custom text field that overrides `copy(_:)`/`paste(_:)`/`cut(_:)`).
-- **Example: BehaviorTrackingTextField**: A `UITextField` subclass that notifies the SDK on copy/paste/cut; use it or wire the same calls in your own text input to get non-zero clipboard counts.
-- **Typing metrics alignment**: Typing events now include `typing_cadence_variability` and `number_of_delete` (0 on iOS), matching Kotlin/Dart. Session results UI shows all typing metrics in the event card.
-
-### Fixed
-
-- **Cut vs backspace**: Text removed by **Cut** is no longer counted as backspace; only actual backspace/delete taps contribute to `backspace_count` and thus to `correction_rate`.
-- **Taps while keyboard open**: Tap and long-press events are **not** counted when a text field or text view is first responder (keyboard open), so typing interaction is not double-counted as tap events.
+- `SynheartBehavior`, `BehaviorConfig`, `BehaviorEvent`,
+  `BehaviorEventType`, `BehaviorSessionSummary`, `BehaviorStats`,
+  `BehaviorError`.
+- Event-handler callback API (`setEventHandler`, `setBatchEventHandler`)
+  for real-time behavioral events.
+- Session-tracking API with summaries; manual stats polling.
+- On-demand metrics for ended sessions:
+  `calculateMetricsForTimeRange()`.
 
 ### Changed
+- README rewritten to remove public exposure of internal Flux
+  integration: dropped the "Required: synheart-flux" install section,
+  `synheart-flux 0.1.1+` requirement, `SynheartFlux.xcframework`
+  references, `FluxBridge.shared.behaviorToHsi(...)` example, "All
+  metrics computed via Flux" claim, the `endSessionWithHsi` /
+  `isFluxAvailable` API table rows, and the
+  `HsiBehaviorPayload` / `FluxBridge` / `FluxBehaviorProcessor` /
+  `BehaviorError.fluxNotAvailable` / `.fluxProcessingFailed` Key
+  Types references.
+- README performance puffery (`<150 KB compiled, <2% CPU,
+  <500 KB memory`) removed (unverified).
+- README "six types of behavioral events" wording aligned with the
+  actual 8-value `BehaviorEventType` enum.
+- Author block dropped from README to match org-wide convention.
+- `synheart-flux` is now declared optional in `Package.swift`, not
+  required.
 
-- Typing session summary is read from top-level HSI `meta` (Flux format); `clipboard_activity_rate` and `correction_rate` are included when available from Flux.
-- Example app typing hint updated to mention Copy/Paste/Cut for testing clipboard counts.
+### Note
+- The `endSessionWithHsi(sessionId:)`, `isFluxAvailable`, and
+  `recordCopy()/Paste()/Cut()` symbols remain in the public Swift
+  source for now; only README references were dropped pending a
+  follow-up alignment with the Flutter / Kotlin SDKs.
 
-## [0.1.0] - 2026-01-28
+### Platform support
+- iOS 12.0+
+- Swift 5.9+, Xcode 15.0+, Swift Package Manager
 
-### Added
-
-- **On-Demand Metrics Calculation**: New time range selection UI with date/time pickers (including milliseconds) to calculate behavioral metrics for custom time ranges within a session
-- **System State Tracking**: Internet connectivity, Do Not Disturb status, and charging state detection
-- **Device Context Tracking**: Average screen brightness, start orientation, and orientation change count
-- **Events Timeline**: Comprehensive event timeline display with color-coded badges and detailed metrics
-- **Raw HSI JSON Display**: Full HSI-compliant JSON output in session results view
-- **Time Range HSI Output**: Console logging of HSI JSON for selected time ranges, matching Dart SDK functionality
-
-### Fixed
-
-- Fixed scroll jitter calculation always showing 0 by improving direction reversal detection sensitivity
-- Fixed typing summary not appearing in UI by ensuring proper Flux integration and JSON extraction
-- Fixed app switch count accuracy by aligning counting logic with Dart SDK (count on background, not foreground)
-- Fixed gesture conflicts where scrolling was detected as swipe or tap events
-- Fixed session spacing, notification summary fields, and system state data showing "N/A"
-- Fixed events timeline displaying 0 events by properly passing and filtering events
-- Fixed "Unknown event" appearing in timeline by filtering out unknown and app_switch events
-- Fixed keyboard not dismissing when tapping outside text field
-- Fixed iOS 13+ availability issues for UI elements (systemBackground, monospacedSystemFont)
-
-### Changed
-
-- **Flux Integration**: All behavioral and typing metric calculations now exclusively use synheart-flux (Rust library) version 0.1.1
-- Removed native Swift calculation implementations for behavioral metrics
-- Updated UI to match Dart SDK's card-based layout structure
-- Improved scroll view discovery to ensure all scroll views are tracked
-- Enhanced gesture recognizer configuration to prevent conflicts with system gestures
-- Refactored typing session tracking to emit comprehensive typing events with all metrics
-- Cleaned up codebase by removing debug print statements and unnecessary comments
-
-### Technical Details
-
-- All behavioral metrics (interaction intensity, distraction score, focus hint, deep focus blocks, etc.) are computed by Flux
-- All typing session metrics (typing session count, average keystrokes, typing speed, etc.) are computed by Flux
-- Native code now only handles event collection, session management, and Flux integration
-- System state and device context data are injected into HSI JSON meta section
-
-[Unreleased]: https://github.com/synheart-ai/synheart-behavior-swift/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/synheart-ai/synheart-behavior-swift/releases/tag/v0.3.0
-[0.2.0]: https://github.com/synheart-ai/synheart-behavior-swift/releases/tag/v0.2.0
-[0.1.0]: https://github.com/synheart-ai/synheart-behavior-swift/releases/tag/v0.1.0
+[Unreleased]: https://github.com/synheart-ai/synheart-behavior-swift/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/synheart-ai/synheart-behavior-swift/releases/tag/v0.3.1
