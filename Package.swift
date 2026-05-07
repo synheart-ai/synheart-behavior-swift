@@ -3,17 +3,19 @@ import PackageDescription
 
 // SynheartBehavior SDK
 //
-// Required Integration: synheart-flux (Rust)
+// Optional integration: synheart-flux (Rust)
 // ==========================================
-// The SDK requires synheart-flux (Rust library) for HSI-compliant
-// behavioral metrics computation. The SDK will fail if Flux is not available.
+// The SDK runs standalone for event capture + per-session summaries.
+// HSI-compliant behavioral metrics (`endSessionWithHsi()`) require
+// the optional synheart-flux native binary.
 //
-// To integrate synheart-flux:
-// 1. Download SynheartFlux.xcframework from synheart-flux releases
-// 2. Place it in Frameworks/SynheartFlux.xcframework
-// 3. Add it as a dependency to your app target
+// To enable HSI metrics:
+// 1. Download SynheartFlux.xcframework from synheart-flux releases.
+// 2. Place it in Frameworks/SynheartFlux.xcframework.
+// 3. Add it as a dependency to your app target.
 //
-// The FluxBridge class will detect the library at runtime and throw errors if unavailable.
+// FluxBridge detects the binary at runtime; without it, only the
+// HSI-emitting path is unavailable — the rest of the SDK works.
 
 let package = Package(
     name: "SynheartBehavior",
