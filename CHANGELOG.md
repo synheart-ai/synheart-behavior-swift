@@ -79,4 +79,3 @@ on `BehaviorSessionSummary` and real-time stats on `BehaviorStats`.
 
 [Unreleased]: https://github.com/synheart-ai/synheart-behavior-swift/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/synheart-ai/synheart-behavior-swift/releases/tag/v0.4.0
-[0.3.1]: https://github.com/synheart-ai/synheart-behavior-swift/releases/tag/v0.3.1
