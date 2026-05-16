@@ -41,7 +41,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/synheart-ai/synheart-behavior-swift.git", from: "0.3.1")
+    .package(url: "https://github.com/synheart-ai/synheart-behavior-swift.git", from: "0.4.0")
 ]
 ```
 
@@ -674,7 +674,9 @@ public class SynheartBehavior {
 | `BehaviorStats` | Real-time metrics snapshot (cadence, velocity, stability) |
 | `BehaviorError` | `.notInitialized`, `.invalidConfiguration`, `.sessionNotFound` |
 
-For full API docs, see the [Swift Package Index page](https://swiftpackageindex.com/synheart-ai/synheart-behavior-swift).
+## 📚 Documentation
+
+Full reference docs live at **[docs.synheart.ai/synheart-behavior/swift](https://docs.synheart.ai/synheart-behavior/swift)** — metric definitions, model card, threat model, error reference, and the cross-platform overview.
 
 ## Contributing
 
