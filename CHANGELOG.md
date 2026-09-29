@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Call, notification and motion collectors.** With
+  `enableAttentionSignals`, the SDK now reports phone-call interruptions
+  (`call`, one event per call at its outcome: `answered` or `ignored`) via
+  CallKit's call observer, and the app's own notifications (`notification`:
+  `received`, then `opened` or `ignored` after 30 s) via the notification
+  center delegate. A host that already owns that delegate should forward to
+  the collector rather than start it, or it will be displaced.
+- **`BehaviorConfig.emitRawMotionSamples` and
+  `SynheartBehavior.setRawMotionSampleHandler`.** Raw 50 Hz accelerometer
+  samples, in m/s² with gravity included, delivered in 1 s batches while a
+  session runs, for a consumer that runs its own motion classification.
+  `enableMotionLite` no longer silently does nothing: it starts the sampler
+  without emitting batches.
+
 ## [0.4.0] - 2026-05-15
 
 API-parity pass. Brings the Swift SDK's surface into alignment with the

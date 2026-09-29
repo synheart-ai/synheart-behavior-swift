@@ -23,6 +23,10 @@ public class SynheartBehavior {
     private var scrollCollector: ScrollSignalCollector?
     private var gestureCollector: GestureSignalCollector?
     private var attentionCollector: AttentionSignalCollector?
+    private var callCollector: CallCollector?
+    private var notificationCollector: NotificationCollector?
+    private var motionCollector: MotionSignalCollector?
+    private var rawMotionHandler: (([[String: Any]]) -> Void)?
 
     // Event fan-out: user-set callback + any active AsyncStream consumers.
     private var userEventHandler: ((BehaviorEvent) -> Void)?
@@ -73,12 +77,13 @@ public class SynheartBehavior {
                 maxIdleGapSeconds: config.maxIdleGapSeconds
             )
             attentionCollector?.start()
+            startInterruptionCollectors(sessionMgr)
         }
 
-        if config.enableMotionLite {
-            // Motion-lite is not yet implemented
-            // Future implementation would go here
-        }
+        // The motion collector exists for the life of the SDK and runs only
+        // inside a session; whether it samples at all follows the config.
+        motionCollector = MotionSignalCollector(config: config)
+        motionCollector?.setRawSampleBatchHandler(rawMotionHandler)
 
         // Wire the batcher's fan-in callbacks to our fan-out layer, so
         // both `setEventHandler` and `events` consumers are served.
@@ -142,6 +147,7 @@ public class SynheartBehavior {
         let sessionIdToUse = sessionId ?? generateSessionId()
         sessionManager?.startSession(sessionId: sessionIdToUse)
         attentionCollector?.resetSessionTracking()
+        motionCollector?.startSession(startMs: Date().timeIntervalSince1970 * 1_000)
 
         return BehaviorSession(
             sessionId: sessionIdToUse,
@@ -161,6 +167,9 @@ public class SynheartBehavior {
 
         // Emit final session stability metrics
         attentionCollector?.emitSessionStability(sessionId: sessionId)
+
+        // Stop sampling and hand out whatever the last second collected.
+        motionCollector?.endSession()
 
         // Flush any pending events
         eventBatcher?.flush()
@@ -277,11 +286,45 @@ public class SynheartBehavior {
                 maxIdleGapSeconds: config.maxIdleGapSeconds
             )
             attentionCollector?.start()
+            startInterruptionCollectors(sessionMgr)
         } else if !config.enableAttentionSignals && wasAttentionEnabled {
             // Disable attention collector
             attentionCollector?.stop()
             attentionCollector = nil
+            stopInterruptionCollectors()
         }
+        callCollector?.updateEnabled(config.enableAttentionSignals)
+        notificationCollector?.updateEnabled(config.enableAttentionSignals)
+        motionCollector?.updateConfig(config)
+    }
+
+    /// Receive raw 50 Hz accelerometer samples in 1 s batches while a session
+    /// runs and `BehaviorConfig.emitRawMotionSamples` is set. Each entry is
+    /// `["ts_ms": Int64, "ax": Double, "ay": Double, "az": Double]` in m/s²
+    /// with gravity included. Pass `nil` to stop receiving.
+    public func setRawMotionSampleHandler(_ handler: (([[String: Any]]) -> Void)?) {
+        rawMotionHandler = handler
+        motionCollector?.setRawSampleBatchHandler(handler)
+    }
+
+    private func startInterruptionCollectors(_ sessionMgr: SessionManager) {
+        if callCollector == nil {
+            callCollector = CallCollector(sdk: self, sessionManager: sessionMgr, enabled: config.enableAttentionSignals)
+            callCollector?.start()
+        }
+        if notificationCollector == nil {
+            notificationCollector = NotificationCollector(
+                sdk: self, sessionManager: sessionMgr, enabled: config.enableAttentionSignals
+            )
+            notificationCollector?.start()
+        }
+    }
+
+    private func stopInterruptionCollectors() {
+        callCollector?.stop()
+        callCollector = nil
+        notificationCollector?.stop()
+        notificationCollector = nil
     }
 
     /// Dispose of the SDK instance and clean up resources.
@@ -341,6 +384,9 @@ public class SynheartBehavior {
         scrollCollector?.stop()
         gestureCollector?.stop()
         attentionCollector?.stop()
+        stopInterruptionCollectors()
+        motionCollector?.dispose()
+        motionCollector = nil
 
         // Clear event batcher
         eventBatcher?.clear()

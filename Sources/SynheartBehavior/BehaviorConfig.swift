@@ -33,6 +33,11 @@ public struct BehaviorConfig {
 
     /// Whether behavior tracking consent is granted.
     public let consentBehavior: Bool
+    /// Emit raw 50 Hz accelerometer samples in 1 s batches through
+    /// `SynheartBehavior.setRawMotionSampleHandler`, in m/s² with gravity
+    /// included, for a consumer that runs its own motion classification.
+    /// Off by default; higher battery impact.
+    public let emitRawMotionSamples: Bool
 
     public init(
         enableInputSignals: Bool = true,
@@ -44,7 +49,8 @@ public struct BehaviorConfig {
         userId: String? = nil,
         deviceId: String? = nil,
         behaviorVersion: String = "1.0.0",
-        consentBehavior: Bool = true
+        consentBehavior: Bool = true,
+        emitRawMotionSamples: Bool = false
     ) {
         self.enableInputSignals = enableInputSignals
         self.enableAttentionSignals = enableAttentionSignals
@@ -56,6 +62,7 @@ public struct BehaviorConfig {
         self.deviceId = deviceId
         self.behaviorVersion = behaviorVersion
         self.consentBehavior = consentBehavior
+        self.emitRawMotionSamples = emitRawMotionSamples
     }
 
     func toDictionary() -> [String: Any] {
@@ -63,6 +70,7 @@ public struct BehaviorConfig {
             "enableInputSignals": enableInputSignals,
             "enableAttentionSignals": enableAttentionSignals,
             "enableMotionLite": enableMotionLite,
+            "emitRawMotionSamples": emitRawMotionSamples,
             "sessionIdPrefix": sessionIdPrefix as Any,
             "eventBatchSize": eventBatchSize,
             "maxIdleGapSeconds": maxIdleGapSeconds,
