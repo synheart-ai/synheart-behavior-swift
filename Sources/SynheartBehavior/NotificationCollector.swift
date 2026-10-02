@@ -10,25 +10,46 @@ import UserNotifications
 /// iOS exposes only the app's own notifications, so there is no source app to
 /// report. Privacy: timing and outcome only, never title or body.
 ///
-/// The collector installs itself as the `UNUserNotificationCenter` delegate.
-/// A host that already has a delegate should forward `willPresent` and
-/// `didReceive` to ``noteDelivered(id:)`` / ``noteOpened(id:)`` instead of
-/// starting this collector, or it will be displaced.
+/// iOS reports an arrival only for a notification delivered while the app is
+/// in the foreground (`willPresent`). A notification delivered in the
+/// background and tapped later is not reported at all: an `opened` without
+/// its arrival would break the one-arrival-one-outcome rule.
+///
+/// By default the collector does **not** touch `UNUserNotificationCenter`.
+/// The host forwards its delegate callbacks through
+/// ``SynheartBehavior/notificationDelivered(id:)`` and
+/// ``SynheartBehavior/notificationOpened(id:)``. With
+/// ``BehaviorConfig/installNotificationDelegate`` the collector installs
+/// itself as the delegate instead, forwards every callback to the delegate it
+/// replaced, and puts that delegate back when it stops.
 internal final class NotificationCollector: NSObject {
     private weak var sdk: SynheartBehavior?
     private weak var sessionManager: SessionManager?
     private var tracker = NotificationOutcomeTracker()
     private var pendingIgnored: [String: DispatchWorkItem] = [:]
     private var enabled: Bool
+    private let installDelegate: Bool
     private var installedDelegate = false
+
+    #if canImport(UserNotifications) && !os(macOS)
+    /// The delegate this collector replaced, forwarded to and restored on stop.
+    private weak var previousDelegate: UNUserNotificationCenterDelegate?
+    #endif
 
     /// How long an un-tapped notification waits before it is reported as ignored.
     let ignoredThresholdMs: Double
 
-    init(sdk: SynheartBehavior, sessionManager: SessionManager, enabled: Bool, ignoredThresholdMs: Double = 30_000) {
+    init(
+        sdk: SynheartBehavior,
+        sessionManager: SessionManager,
+        enabled: Bool,
+        installDelegate: Bool,
+        ignoredThresholdMs: Double = 30_000
+    ) {
         self.sdk = sdk
         self.sessionManager = sessionManager
         self.enabled = enabled
+        self.installDelegate = installDelegate
         self.ignoredThresholdMs = ignoredThresholdMs
         super.init()
     }
@@ -39,7 +60,10 @@ internal final class NotificationCollector: NSObject {
 
     func start() {
         #if canImport(UserNotifications) && !os(macOS)
-        UNUserNotificationCenter.current().delegate = self
+        guard installDelegate, !installedDelegate else { return }
+        let center = UNUserNotificationCenter.current()
+        if center.delegate !== self { previousDelegate = center.delegate }
+        center.delegate = self
         installedDelegate = true
         #endif
     }
@@ -47,8 +71,9 @@ internal final class NotificationCollector: NSObject {
     func stop() {
         #if canImport(UserNotifications) && !os(macOS)
         if installedDelegate, UNUserNotificationCenter.current().delegate === self {
-            UNUserNotificationCenter.current().delegate = nil
+            UNUserNotificationCenter.current().delegate = previousDelegate
         }
+        previousDelegate = nil
         installedDelegate = false
         #endif
         pendingIgnored.values.forEach { $0.cancel() }
@@ -71,11 +96,12 @@ internal final class NotificationCollector: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + ignoredThresholdMs / 1_000, execute: task)
     }
 
-    /// The person tapped a notification. Reports `opened` and cancels its ignored timer.
+    /// The person tapped a notification. Reports `opened` and cancels its
+    /// ignored timer — only for a notification whose arrival was reported.
     func noteOpened(id: String) {
         pendingIgnored[id]?.cancel()
         pendingIgnored[id] = nil
-        _ = tracker.opened(id: id)
+        guard tracker.opened(id: id) else { return }
         emit(action: "opened")
     }
 
@@ -93,10 +119,12 @@ extension NotificationCollector: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         noteDelivered(id: notification.request.identifier)
-        if #available(iOS 14.0, *) {
-            completionHandler([.banner, .sound, .badge])
+        // The presentation is the host's choice. Without a previous delegate
+        // that answers, keep the system default: nothing shown in the foreground.
+        if let forward = previousDelegate?.userNotificationCenter(_:willPresent:withCompletionHandler:) {
+            forward(center, notification, completionHandler)
         } else {
-            completionHandler([.alert, .sound, .badge])
+            completionHandler([])
         }
     }
 
@@ -106,7 +134,15 @@ extension NotificationCollector: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         noteOpened(id: response.notification.request.identifier)
-        completionHandler()
+        if let forward = previousDelegate?.userNotificationCenter(_:didReceive:withCompletionHandler:) {
+            forward(center, response, completionHandler)
+        } else {
+            completionHandler()
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, openSettingsFor notification: UNNotification?) {
+        previousDelegate?.userNotificationCenter?(center, openSettingsFor: notification)
     }
 }
 #endif

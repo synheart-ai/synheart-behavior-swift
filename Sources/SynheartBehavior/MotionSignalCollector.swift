@@ -10,9 +10,10 @@ import CoreMotion
 /// motion-sample contract across platforms (Android's raw accelerometer
 /// reports m/s²). CoreMotion reports g, so the collector converts.
 ///
-/// Runs only while a session is running and either ``BehaviorConfig/enableMotionLite``
-/// or ``BehaviorConfig/emitRawMotionSamples`` is set; batches are emitted only
-/// for the latter, and only when a handler is registered. Inert off iOS.
+/// Runs only while a session is running and ``BehaviorConfig/emitRawMotionSamples``
+/// is set; batches go to the registered handler, on the main queue. Nothing
+/// else reads the samples, so ``BehaviorConfig/enableMotionLite`` alone does
+/// not start the sensor. Inert off iOS.
 /// Privacy: raw motion values and timing only, never location.
 internal final class MotionSignalCollector {
     /// One raw sample as handed to the batch handler: `ts_ms`, `ax`, `ay`, `az`.
@@ -42,7 +43,7 @@ internal final class MotionSignalCollector {
         self.config = config
     }
 
-    var shouldCollect: Bool { config.enableMotionLite || config.emitRawMotionSamples }
+    var shouldCollect: Bool { config.emitRawMotionSamples }
 
     func updateConfig(_ newConfig: BehaviorConfig) {
         config = newConfig
@@ -63,8 +64,10 @@ internal final class MotionSignalCollector {
 
     func startSession(startMs: Double) {
         sessionStartMs = startMs
-        lastBatchEndMs = startMs
-        sampleQueue.async(flags: .barrier) { self.samples.removeAll() }
+        sampleQueue.async(flags: .barrier) {
+            self.samples.removeAll()
+            self.lastBatchEndMs = startMs
+        }
         if shouldCollect { startCollecting() }
         updateBatchTimer()
     }
@@ -98,11 +101,15 @@ internal final class MotionSignalCollector {
         let manager = CMMotionManager()
         guard manager.isAccelerometerAvailable else { return }
         manager.accelerometerUpdateInterval = Self.updateInterval
+        // CoreMotion stamps each sample in seconds since boot, and delivers
+        // them in bursts; stamping at delivery would bunch a burst onto one
+        // instant. Convert the sensor's own time to epoch ms with one offset.
+        let bootEpochMs = (Date().timeIntervalSince1970 - ProcessInfo.processInfo.systemUptime) * 1_000
         manager.startAccelerometerUpdates(to: OperationQueue()) { [weak self] data, error in
             guard let self, let data, error == nil else { return }
             let g = Self.gravity
             self.ingest(
-                tsMs: Date().timeIntervalSince1970 * 1_000,
+                tsMs: bootEpochMs + data.timestamp * 1_000,
                 x: data.acceleration.x * g,
                 y: data.acceleration.y * g,
                 z: data.acceleration.z * g
@@ -152,10 +159,9 @@ internal final class MotionSignalCollector {
     }
 
     /// Hand every sample since the last flush to the handler, oldest first,
-    /// and trim the buffer to the last ``retainedHistoryMs``.
-    func flushBatch() {
+    /// on the main queue, and trim the buffer to the last ``retainedHistoryMs``.
+    func flushBatch(nowMs: Double = Date().timeIntervalSince1970 * 1_000) {
         guard let handler = batchHandler, config.emitRawMotionSamples else { return }
-        let nowMs = Date().timeIntervalSince1970 * 1_000
         let batch: [RawSample] = sampleQueue.sync(flags: .barrier) {
             let since = lastBatchEndMs
             let recent = samples.filter { $0.ts > since && $0.ts <= nowMs }
@@ -165,6 +171,9 @@ internal final class MotionSignalCollector {
             return recent.map { ["ts_ms": Int64($0.ts), "ax": $0.x, "ay": $0.y, "az": $0.z] }
         }
         if batch.isEmpty { return }
-        handler(batch)
+        DispatchQueue.main.async { handler(batch) }
     }
+
+    /// Samples still buffered (the last ``retainedHistoryMs``). For tests.
+    var bufferedSampleCount: Int { sampleQueue.sync { samples.count } }
 }

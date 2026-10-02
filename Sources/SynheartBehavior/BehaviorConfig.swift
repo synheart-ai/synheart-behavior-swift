@@ -9,7 +9,8 @@ public struct BehaviorConfig {
     public let enableAttentionSignals: Bool
 
     /// Enable motion-lite signals (device orientation, shake patterns, micro-movement).
-    /// Note: This is optional and may have higher battery impact.
+    /// Not implemented yet: on its own it collects nothing and starts no
+    /// sensor. For raw accelerometer samples, use ``emitRawMotionSamples``.
     public let enableMotionLite: Bool
 
     /// Custom session ID prefix. If nil, auto-generated.
@@ -39,6 +40,14 @@ public struct BehaviorConfig {
     /// Off by default; higher battery impact.
     public let emitRawMotionSamples: Bool
 
+    /// Install the SDK as the `UNUserNotificationCenter` delegate to observe
+    /// the app's notifications. Off by default: the host forwards its own
+    /// delegate callbacks to ``SynheartBehavior/notificationDelivered(id:)``
+    /// and ``SynheartBehavior/notificationOpened(id:)`` instead. When on, the
+    /// SDK forwards every callback to the delegate it replaced (presentation
+    /// stays that delegate's choice) and restores it when it stops.
+    public let installNotificationDelegate: Bool
+
     public init(
         enableInputSignals: Bool = true,
         enableAttentionSignals: Bool = true,
@@ -50,7 +59,8 @@ public struct BehaviorConfig {
         deviceId: String? = nil,
         behaviorVersion: String = "1.0.0",
         consentBehavior: Bool = true,
-        emitRawMotionSamples: Bool = false
+        emitRawMotionSamples: Bool = false,
+        installNotificationDelegate: Bool = false
     ) {
         self.enableInputSignals = enableInputSignals
         self.enableAttentionSignals = enableAttentionSignals
@@ -63,6 +73,7 @@ public struct BehaviorConfig {
         self.behaviorVersion = behaviorVersion
         self.consentBehavior = consentBehavior
         self.emitRawMotionSamples = emitRawMotionSamples
+        self.installNotificationDelegate = installNotificationDelegate
     }
 
     func toDictionary() -> [String: Any] {
@@ -71,6 +82,7 @@ public struct BehaviorConfig {
             "enableAttentionSignals": enableAttentionSignals,
             "enableMotionLite": enableMotionLite,
             "emitRawMotionSamples": emitRawMotionSamples,
+            "installNotificationDelegate": installNotificationDelegate,
             "sessionIdPrefix": sessionIdPrefix as Any,
             "eventBatchSize": eventBatchSize,
             "maxIdleGapSeconds": maxIdleGapSeconds,

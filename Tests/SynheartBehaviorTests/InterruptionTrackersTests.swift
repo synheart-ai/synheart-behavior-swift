@@ -62,17 +62,21 @@ final class InterruptionTrackersTests: XCTestCase {
     func testMotionCollectorBatchesSamplesSinceLastFlush() {
         let collector = MotionSignalCollector(config: BehaviorConfig(emitRawMotionSamples: true))
         var batches: [[[String: Any]]] = []
-        collector.setRawSampleBatchHandler { batches.append($0) }
+        let delivered = expectation(description: "batch")
+        collector.setRawSampleBatchHandler { batches.append($0); delivered.fulfill() }
         let start = Date().timeIntervalSince1970 * 1_000 - 100
         collector.startSession(startMs: start)
         collector.ingest(tsMs: start + 10, x: 0, y: 0, z: 9.81)
         collector.ingest(tsMs: start + 30, x: 0.1, y: 0, z: 9.7)
         collector.flushBatch()
+        // The handler runs on the main queue.
+        wait(for: [delivered], timeout: 2)
         XCTAssertEqual(batches.count, 1)
         XCTAssertEqual(batches[0].count, 2)
         XCTAssertEqual(batches[0][0]["az"] as? Double, 9.81)
         XCTAssertNotNil(batches[0][0]["ts_ms"] as? Int64)
         collector.flushBatch()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
         XCTAssertEqual(batches.count, 1, "an empty interval emits nothing")
         collector.endSession()
     }

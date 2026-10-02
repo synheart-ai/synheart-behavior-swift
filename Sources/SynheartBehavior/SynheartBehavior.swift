@@ -301,10 +301,29 @@ public class SynheartBehavior {
     /// Receive raw 50 Hz accelerometer samples in 1 s batches while a session
     /// runs and `BehaviorConfig.emitRawMotionSamples` is set. Each entry is
     /// `["ts_ms": Int64, "ax": Double, "ay": Double, "az": Double]` in m/s²
-    /// with gravity included. Pass `nil` to stop receiving.
+    /// with gravity included, stamped with the sensor's own time. Called on
+    /// the main queue. Pass `nil` to stop receiving.
     public func setRawMotionSampleHandler(_ handler: (([[String: Any]]) -> Void)?) {
         rawMotionHandler = handler
         motionCollector?.setRawSampleBatchHandler(handler)
+    }
+
+    /// Report that one of the app's notifications was delivered while it was
+    /// in the foreground. Call it from your
+    /// `userNotificationCenter(_:willPresent:withCompletionHandler:)` with
+    /// `notification.request.identifier`. Emits `received`, then `ignored`
+    /// after 30 s unless ``notificationOpened(id:)`` follows. No-op without
+    /// attention signals or a running session.
+    public func notificationDelivered(id: String) {
+        notificationCollector?.noteDelivered(id: id)
+    }
+
+    /// Report that the person tapped one of the app's notifications. Call it
+    /// from your `userNotificationCenter(_:didReceive:withCompletionHandler:)`
+    /// with `response.notification.request.identifier`. Emits `opened` only
+    /// for a notification reported through ``notificationDelivered(id:)``.
+    public func notificationOpened(id: String) {
+        notificationCollector?.noteOpened(id: id)
     }
 
     private func startInterruptionCollectors(_ sessionMgr: SessionManager) {
@@ -314,7 +333,10 @@ public class SynheartBehavior {
         }
         if notificationCollector == nil {
             notificationCollector = NotificationCollector(
-                sdk: self, sessionManager: sessionMgr, enabled: config.enableAttentionSignals
+                sdk: self,
+                sessionManager: sessionMgr,
+                enabled: config.enableAttentionSignals,
+                installDelegate: config.installNotificationDelegate
             )
             notificationCollector?.start()
         }
