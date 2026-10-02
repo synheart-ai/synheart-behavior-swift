@@ -41,7 +41,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/synheart-ai/synheart-behavior-swift.git", from: "0.4.0")
+    .package(url: "https://github.com/synheart-ai/synheart-behavior-swift.git", from: "0.5.0")
 ]
 ```
 
@@ -230,7 +230,7 @@ Instead, the SDK records only event-level metadata, such as:
 
 ### Notification Permission
 
-Required for tracking notification interactions (received, opened, ignored). On iOS, request notification authorization via `UNUserNotificationCenter` in your host app, then forward the relevant `UNNotificationResponse` events through the SDK if you want fine-grained tracking.
+Required for tracking notification interactions (received, opened, ignored). On iOS, request notification authorization via `UNUserNotificationCenter` in your host app, then forward your delegate callbacks to the SDK. The SDK does not replace your `UNUserNotificationCenter` delegate.
 
 ```swift
 import UserNotifications
@@ -238,7 +238,26 @@ import UserNotifications
 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
     print("Notification authorization granted: \(granted)")
 }
+
+// In your UNUserNotificationCenterDelegate:
+func userNotificationCenter(_ center: UNUserNotificationCenter,
+                            willPresent notification: UNNotification,
+                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+    behavior.notificationDelivered(id: notification.request.identifier)
+    completionHandler([.banner, .sound])
+}
+
+func userNotificationCenter(_ center: UNUserNotificationCenter,
+                            didReceive response: UNNotificationResponse,
+                            withCompletionHandler completionHandler: @escaping () -> Void) {
+    behavior.notificationOpened(id: response.notification.request.identifier)
+    completionHandler()
+}
 ```
+
+Each notification is reported as `received`, then `opened`, or `ignored` after 30 s. iOS only calls `willPresent` while your app is in the foreground, so a notification delivered in the background is not reported, even if it is tapped later.
+
+An app without a delegate of its own can set `BehaviorConfig(installNotificationDelegate: true)`. The SDK then becomes the delegate, forwards every callback to the delegate it replaced, and restores it when attention signals stop. Without a previous delegate it keeps the system default: nothing is shown while the app is in the foreground.
 
 ### Call Permission
 
@@ -255,7 +274,8 @@ let config = BehaviorConfig(
     // Enable/disable signal types
     enableInputSignals: true,        // Scroll, tap, swipe gestures
     enableAttentionSignals: true,    // App switching, idle gaps, session stability
-    enableMotionLite: true,          // Lightweight on-device motion classification
+    enableMotionLite: false,         // Not implemented yet; collects nothing on its own
+    emitRawMotionSamples: false,     // Raw 50 Hz accelerometer batches via setRawMotionSampleHandler
 
     // Session configuration
     sessionIdPrefix: "MYAPP",        // Custom session ID prefix (default: "SESS")

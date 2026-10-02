@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-02
+
+Minor bump, not a patch: new collectors and public API, and with the
+default `enableAttentionSignals: true` every host now reports call events.
+
+### Added
+- **Call collector.** With `enableAttentionSignals`, phone-call
+  interruptions are reported through CallKit's call observer: one `call`
+  event per incoming call, at its outcome (`answered`, or `ignored` when it
+  rang for at least 1 s and ended without connecting). Outgoing calls are not
+  interruptions. Timing and outcome only, never a number or contact.
+- **Notification collector**, for the app's own notifications: `received`,
+  then exactly one of `opened` or `ignored` (after 30 s). The SDK does
+  **not** replace the host's `UNUserNotificationCenter` delegate; the host
+  forwards its callbacks with the new
+  `SynheartBehavior.notificationDelivered(id:)` and
+  `notificationOpened(id:)`. iOS calls `willPresent` only in the foreground,
+  so a notification delivered in the background is not reported; an open
+  without a reported arrival is dropped rather than counted.
+- **`BehaviorConfig.installNotificationDelegate`** (default `false`), for an
+  app without a delegate of its own: the SDK installs itself, forwards every
+  callback to the delegate it replaced (presentation stays that delegate's
+  choice; without one, the system default of showing nothing in the
+  foreground), and restores it when attention signals stop.
+- **`BehaviorConfig.emitRawMotionSamples` and
+  `SynheartBehavior.setRawMotionSampleHandler`.** Raw 50 Hz accelerometer
+  samples, in m/s² with gravity included, in 1 s batches on the main queue
+  while a session runs, for a consumer that runs its own motion
+  classification. Each sample carries the sensor's own timestamp (CoreMotion
+  delivers in bursts, so stamping at delivery would bunch them).
+
+### Changed
+- `enableMotionLite` is documented as not implemented: on its own it
+  collects nothing and starts no sensor. The README example no longer
+  describes it as on-device motion classification.
+
 ## [0.4.0] - 2026-05-15
 
 API-parity pass. Brings the Swift SDK's surface into alignment with the
@@ -77,5 +113,6 @@ on `BehaviorSessionSummary` and real-time stats on `BehaviorStats`.
 - iOS 12.0+
 - Swift 5.9+, Xcode 15.0+, Swift Package Manager
 
-[Unreleased]: https://github.com/synheart-ai/synheart-behavior-swift/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/synheart-ai/synheart-behavior-swift/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/synheart-ai/synheart-behavior-swift/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/synheart-ai/synheart-behavior-swift/releases/tag/v0.4.0
