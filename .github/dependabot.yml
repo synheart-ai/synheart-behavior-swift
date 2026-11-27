@@ -1,18 +1,35 @@
 version: 2
-updates:
-  - package-ecosystem: "swift"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+multi-ecosystem-groups:
+  dependency-updates:
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: saturday
+      time: "10:00"
+      timezone: Africa/Addis_Ababa
+
+updates:
+  - package-ecosystem: swift
+    directory: "/"
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
-      - "ci"
+      - dependencies
+    patterns: ["*"]
+    multi-ecosystem-group: dependency-updates
+    ignore:
+      # Keep major upgrades separate for manual review.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    patterns: ["*"]
+    multi-ecosystem-group: dependency-updates
+    ignore:
+      # Keep major upgrades separate for manual review.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
