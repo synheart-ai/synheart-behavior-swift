@@ -2,6 +2,7 @@ version: 2
 
 multi-ecosystem-groups:
   dependency-updates:
+    open-pull-requests-limit: 5
     schedule:
       interval: weekly
       day: saturday
@@ -11,7 +12,6 @@ multi-ecosystem-groups:
 updates:
   - package-ecosystem: swift
     directory: "/"
-    open-pull-requests-limit: 5
     labels:
       - dependencies
     patterns: ["*"]
@@ -23,7 +23,6 @@ updates:
 
   - package-ecosystem: github-actions
     directory: "/"
-    open-pull-requests-limit: 5
     labels:
       - dependencies
       - ci
